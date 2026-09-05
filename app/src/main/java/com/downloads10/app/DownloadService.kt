@@ -16,6 +16,7 @@ import java.net.URLDecoder
 import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
+import java.util.concurrent.ThreadPoolExecutor
 import kotlin.math.max
 
 class DownloadService : Service() {
@@ -32,7 +33,7 @@ class DownloadService : Service() {
 
     private val lock = Any()
     private val futures = ConcurrentHashMap<Long, java.util.concurrent.Future<*>>()
-    private var executor = Executors.newFixedThreadPool(3)
+    private var executor: ThreadPoolExecutor = Executors.newFixedThreadPool(3) as ThreadPoolExecutor
     private val mainHandler = Handler(Looper.getMainLooper())
 
     override fun onCreate() {
@@ -55,13 +56,21 @@ class DownloadService : Service() {
 
     private fun reloadExecutor() {
         synchronized(lock) {
-            val wanted = DownloadStore.concurrent(this)
-            executor.shutdownNow()
-            executor = Executors.newFixedThreadPool(wanted)
+            val wanted = DownloadStore.concurrent(this).coerceIn(1, 10)
+            if (executor.maximumPoolSize != wanted) {
+                if (wanted > executor.maximumPoolSize) {
+                    executor.maximumPoolSize = wanted
+                    executor.corePoolSize = wanted
+                } else {
+                    executor.corePoolSize = wanted
+                    executor.maximumPoolSize = wanted
+                }
+            }
         }
     }
 
     private fun enqueuePending() {
+        reloadExecutor()
         synchronized(lock) {
             val items = DownloadStore.all(this)
             items.filter { it.status == DownloadItem.Status.QUEUED }.forEach { item ->
@@ -75,16 +84,14 @@ class DownloadService : Service() {
 
     private fun pause(id: Long) {
         futures.remove(id)?.cancel(true)
-        val items = DownloadStore.all(this)
-        items.firstOrNull { it.id == id }?.let { it.status = DownloadItem.Status.PAUSED; it.speed = 0; DownloadStore.save(this, items) }
+        DownloadStore.update(this, id) { it.status = DownloadItem.Status.PAUSED; it.speed = 0 }
         broadcastChanged()
     }
 
     private fun resume(id: Long) {
-        val items = DownloadStore.all(this)
-        items.firstOrNull { it.id == id }?.let {
+        DownloadStore.update(this, id) {
             if (it.status == DownloadItem.Status.PAUSED || it.status == DownloadItem.Status.FAILED || it.status == DownloadItem.Status.CANCELLED) {
-                it.status = DownloadItem.Status.QUEUED; it.error = ""; DownloadStore.save(this, items)
+                it.status = DownloadItem.Status.QUEUED; it.error = ""
             }
         }
         broadcastChanged()
@@ -92,8 +99,7 @@ class DownloadService : Service() {
 
     private fun cancel(id: Long) {
         futures.remove(id)?.cancel(true)
-        val items = DownloadStore.all(this)
-        items.firstOrNull { it.id == id }?.let { it.status = DownloadItem.Status.CANCELLED; it.speed = 0; DownloadStore.save(this, items) }
+        DownloadStore.update(this, id) { it.status = DownloadItem.Status.CANCELLED; it.speed = 0 }
         broadcastChanged()
     }
 
@@ -162,7 +168,7 @@ class DownloadService : Service() {
         val conn = connection ?: throw IOException("Connection failed")
         try {
             val local = currentLocalSize(snapshot.id)
-            if (conn.responseCode == HttpURLConnection.HTTP_REQUESTED_RANGE_NOT_SATISFIABLE && local > 0) {
+            if (conn.responseCode == 416 && local > 0) {
                 val total = parseContentRangeTotal(conn.getHeaderField("Content-Range"))
                 if (total <= 0 || local >= total) {
                     updateItem(snapshot.id) { it.downloaded = local; it.size = if (total > 0) total else it.size; it.speed = 0; it.status = DownloadItem.Status.COMPLETED }
@@ -277,8 +283,7 @@ class DownloadService : Service() {
     }
 
     private fun updateItem(id: Long, change: (DownloadItem) -> Unit) {
-        val items = DownloadStore.all(this)
-        items.firstOrNull { it.id == id }?.let { change(it); DownloadStore.save(this, items) }
+        DownloadStore.update(this, id, change)
     }
 
     private fun setStatus(id: Long, status: DownloadItem.Status, error: String) = updateItem(id) { it.status = status; it.error = error; if (status != DownloadItem.Status.DOWNLOADING) it.speed = 0 }

@@ -30,6 +30,14 @@ object DownloadStore {
         return out.sortedByDescending { it.createdAt }.toMutableList()
     }
 
+    @Synchronized fun update(c: Context, id: Long, change: (DownloadItem) -> Unit): DownloadItem? {
+        val items = all(c)
+        val item = items.firstOrNull { it.id == id } ?: return null
+        change(item)
+        save(c, items)
+        return item
+    }
+
     @Synchronized fun save(c: Context, items: List<DownloadItem>) {
         val a = JSONArray()
         items.forEach { d ->
