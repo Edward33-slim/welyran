@@ -1,0 +1,9 @@
+<resources>
+    <color name="black">#000000</color>
+    <color name="gray_light">#BDBDBD</color>
+    <color name="gray_dark">#424242</color>
+    <color name="white">#FFFFFF</color>
+    <color name="surface">#121212</color>
+    <color name="surface_2">#1E1E1E</color>
+    <color name="divider">#303030</color>
+</resources>
