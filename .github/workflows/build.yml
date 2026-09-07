@@ -1,1 +1,47 @@
+name: Unzip and Build App
 
+on:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch:  # تتيح لك التشغيل اليدوي
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. تحميل الكود من المستودع (ليتعرّف على الملف المضغوط)
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # 2. فك ضغط الملف داخل مجلد جديد اسمه "source"
+      - name: Extract ZIP file
+        run: |
+          mkdir source
+          unzip Downloads10_Browser_Full_Source.zip -d source
+          # لو كان داخل الملف المضغوط مجلد واحد فقط، ينقل محتوياته للخارج عشان ما تتعقد المسارات
+          cd source
+          if [ $(ls -1 | wc -l) -eq 1 ] && [ -d "$(ls)" ]; then
+            SUBDIR=$(ls)
+            mv $SUBDIR/* ./
+            rm -rf $SUBDIR
+          fi
+          cd ..
+          ls -la source/  # فقط للتأكد من المحتويات (تقدر تشيل السطر هذا)
+
+      # 3. تجهيز Java (مطلوب لمشاريع Gradle)
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      # 4. منح صلاحية التنفيذ لـ gradlew (لو كان المشروع أندرويد)
+      - name: Grant execute permission
+        run: chmod +x source/gradlew || true  # || true يعني لو ما لقى الملف يتجاوز الخطأ
+
+      # 5. بناء التطبيق (هنا يفترض أنه مشروع Gradle)
+      - name: Build with Gradle
+        run: |
+          cd source
+          ./gradlew build
