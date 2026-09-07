@@ -1,5 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<paths xmlns:android="http://schemas.android.com/apk/res/android">
-    <cache-path name="downloads10_cache" path="." />
-    <external-files-path name="downloads10_external" path="." />
-</paths>
