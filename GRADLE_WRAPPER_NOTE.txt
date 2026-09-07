@@ -1,6 +1,0 @@
-Downloads10 Browser - build note
-
-The GitHub Actions workflow provisions Gradle 8.7 with gradle/actions/setup-gradle@v4,
-then runs ./gradlew assembleDebug. The included gradlew/gradlew.bat launch the provisioned
-Gradle executable. This package does not contain the official gradle-wrapper.jar because
-that binary could not be retrieved in the packaging environment.
