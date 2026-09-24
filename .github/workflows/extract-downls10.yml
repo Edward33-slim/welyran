@@ -9,7 +9,7 @@ permissions:
 
 jobs:
   extract:
-    if: \${{ hashFiles('DownLS10_browser_gradle.zip') != '' }}
+    if: ${{ hashFiles('DownLS10_browser_gradle.zip') != '' }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
