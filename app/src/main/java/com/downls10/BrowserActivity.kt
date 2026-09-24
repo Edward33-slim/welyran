@@ -2,6 +2,7 @@ package com.downls10
 
 import android.Manifest
 import android.app.Activity
+import android.app.role.RoleManager
 import android.app.AlertDialog
 import android.content.Context
 import android.content.Intent
@@ -151,6 +152,30 @@ class BrowserActivity : Activity() {
             restoreTabsOrCreateHome()
         }
         handleOpenUrlIntent(intent)
+        requestBrowserRoleIfNeeded()
+    }
+
+    /**
+     * Android 10+ controls the browser role. This asks the user for consent
+     * to make DownLS10 the default browser.
+     */
+    private fun requestBrowserRoleIfNeeded() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return
+
+        val roleManager = getSystemService(RoleManager::class.java) ?: return
+        if (!roleManager.isRoleAvailable(RoleManager.ROLE_BROWSER)) return
+        if (roleManager.isRoleHeld(RoleManager.ROLE_BROWSER)) return
+
+        try {
+            startActivityForResult(
+                roleManager.createRequestRoleIntent(RoleManager.ROLE_BROWSER),
+                9201
+            )
+        } catch (_: Exception) {
+            // If this Android build does not expose the role dialog,
+            // the manifest filters still let the user select DownLS10
+            // from the system's default-app settings.
+        }
     }
 
     /**
