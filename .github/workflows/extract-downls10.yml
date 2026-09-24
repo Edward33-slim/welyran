@@ -23,8 +23,14 @@ jobs:
           mkdir -p /tmp/downls10
           unzip -q DownLS10_browser_gradle.zip -d /tmp/downls10
 
-          cp -R /tmp/downls10/. .
-          rm -f .github/workflows/extract-downls10.yml _trigger.txt DownLS10_browser_gradle.zip
+          shopt -s dotglob
+          for item in /tmp/downls10/*; do
+            case "$item" in
+              /tmp/downls10/.github) ;;
+              *) cp -R "$item" . ;;
+            esac
+          done
+          rm -f _trigger.txt DownLS10_browser_gradle.zip
 
 
           python3 - <<'PY'
