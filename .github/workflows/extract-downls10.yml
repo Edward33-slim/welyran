@@ -23,16 +23,9 @@ jobs:
           mkdir -p /tmp/downls10
           unzip -q DownLS10_browser_gradle.zip -d /tmp/downls10
 
-          ROOT="$(dirname "$(dirname "$(find /tmp/downls10 -type f -path '*/src/main/AndroidManifest.xml' -print -quit)")")"
-          if [ -z "$ROOT" ] || [ ! -d "$ROOT/src" ]; then
-            echo "Could not locate extracted Android project"
-            find /tmp/downls10 -maxdepth 4 -type f | sort | head -100
-            exit 1
-          fi
-          mkdir -p app
-          rm -rf app/src
-          cp -R "$ROOT/src" app/
-          cp "$ROOT/proguard-rules.pro" app/proguard-rules.pro
+          cp -R /tmp/downls10/. .
+          rm -f .github/workflows/extract-downls10.yml _trigger.txt DownLS10_browser_gradle.zip
+
 
           python3 - <<'PY'
           from pathlib import Path
