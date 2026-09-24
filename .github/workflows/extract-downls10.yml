@@ -9,13 +9,13 @@ permissions:
 
 jobs:
   extract:
-    if: ${{ hashFiles('DownLS10_browser_gradle.zip') != '' }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
       - name: Extract and convert to Gradle project
+        if: ${{ hashFiles('DownLS10_browser_gradle.zip') != '' }}
         shell: bash
         run: |
           set -e
@@ -139,5 +139,6 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
+          if git diff --cached --quiet; then exit 0; fi
           git commit -m "Extract DownLS10 and convert to Gradle project"
           git push
