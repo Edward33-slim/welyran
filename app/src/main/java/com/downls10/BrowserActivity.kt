@@ -280,18 +280,35 @@ class BrowserActivity : Activity() {
 
     private fun handleOpenUrlIntent(intent: Intent?) {
         // روابط قادمة من تطبيقات أخرى (مثل ChatGPT) تصل عادةً كـ ACTION_VIEW + data URI.
+        // كما ندعم ACTION_SEND للنص/الرابط المشترك من ChatGPT أو مدير الملفات أو المتصفح.
         // EXTRA_OPEN_URL يبقى مدعومًا للتنقل الداخلي في التطبيق.
         val extraUrl = intent?.getStringExtra(EXTRA_OPEN_URL)
+        val viewUrl = intent?.dataString?.takeIf {
+            intent.action == Intent.ACTION_VIEW &&
+                (it.startsWith("http://", ignoreCase = true) ||
+                 it.startsWith("https://", ignoreCase = true) ||
+                 it.startsWith("ftp://", ignoreCase = true) ||
+                 it.startsWith("magnet:", ignoreCase = true))
+        }
+        val sharedText = if (intent?.action == Intent.ACTION_SEND) {
+            intent.getStringExtra(Intent.EXTRA_TEXT)?.trim()
+        } else null
+
         val incomingUrl = extraUrl?.takeIf { it.isNotBlank() }
-            ?: intent?.dataString?.takeIf {
-                intent.action == Intent.ACTION_VIEW &&
-                    (it.startsWith("http://", ignoreCase = true) ||
-                     it.startsWith("https://", ignoreCase = true))
-            }
+            ?: viewUrl
+            ?: sharedText?.takeIf { isSupportedSharedUrl(it) }
 
         if (!incomingUrl.isNullOrBlank()) {
             openIncomingUrl(incomingUrl, intent?.type)
         }
+    }
+
+    private fun isSupportedSharedUrl(text: String): Boolean {
+        val value = text.trim()
+        return value.startsWith("http://", ignoreCase = true) ||
+            value.startsWith("https://", ignoreCase = true) ||
+            value.startsWith("ftp://", ignoreCase = true) ||
+            value.startsWith("magnet:", ignoreCase = true)
     }
 
     /**
