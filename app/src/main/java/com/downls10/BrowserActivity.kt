@@ -290,39 +290,62 @@ class BrowserActivity : Activity() {
             }
 
         if (!incomingUrl.isNullOrBlank()) {
-            openIncomingUrl(incomingUrl)
+            openIncomingUrl(incomingUrl, intent?.type)
         }
     }
 
     /**
-     * يعالج الرابط القادم من خارج المتصفح.
+     * يعالج الرابط القادم من خارج المتصفح (مثل رابط من ChatGPT).
      *
-     * إذا كان الرابط يبدو ملفًا مباشرًا (أو يعيد Content-Disposition: attachment /
-     * application/octet-stream) يذهب مباشرة إلى مدير التنزيل، وإلا يفتح في تبويب جديد.
+     * الأولوية هنا للتنزيل:
+     * 1) روابط الملفات الواضحة بالامتداد.
+     * 2) روابط المشاركة التي يعرفها LinkResolver ويمكن تحويلها إلى رابط تنزيل.
+     * 3) روابط Mega/Yandex/pCloud/MediaFire التي يستطيع محرك التنزيل حلّها.
+     * 4) Content-Disposition / MIME من الخادم.
+     *
+     * أما صفحات الويب العادية فتُفتح في تبويب جديد.
      */
-    private fun openIncomingUrl(rawUrl: String) {
+    private fun openIncomingUrl(rawUrl: String, incomingMimeType: String? = null) {
         val url = rawUrl.trim()
         if (url.isBlank()) return
 
-        if (isLikelyDownloadUrl(url)) {
+        val lower = url.lowercase()
+        val resolvedKnown = try { LinkResolver.resolve(url) } catch (_: Exception) { url }
+        val knownDownloadShare =
+            resolvedKnown != url ||
+            LinkResolver.needsRemoteResolution(url) ||
+            LinkResolver.needsHtmlResolution(url)
+
+        val mimeLooksDownload = incomingMimeType?.lowercase()?.let { mime ->
+            mime == "application/octet-stream" ||
+                mime == "application/vnd.android.package-archive" ||
+                mime == "application/zip" ||
+                mime == "application/x-rar-compressed" ||
+                mime == "application/x-7z-compressed" ||
+                mime == "application/pdf" ||
+                mime.startsWith("audio/") ||
+                mime.startsWith("video/") ||
+                mime.startsWith("application/")
+        } ?: false
+
+        if (isLikelyDownloadUrl(url) || knownDownloadShare || mimeLooksDownload ||
+            lower.startsWith("ftp://") || lower.startsWith("magnet:")) {
             DownloadsRepository.startNewDownload(
                 this,
                 url,
                 showToast = true,
                 userAgent = currentWebView().settings.userAgentString,
-                referer = null
+                referer = null,
+                mimeType = incomingMimeType
             )
             return
         }
 
         // نفحص ترويسات الرابط في الخلفية حتى لا تتجمد واجهة المتصفح.
         bgExecutor.execute {
+            val ua = currentWebView().settings.userAgentString
             val probe = try {
-                DownloadManagerEngine().probe(
-                    url,
-                    currentWebView().settings.userAgentString,
-                    null
-                )
+                DownloadManagerEngine().probe(url, ua, null)
             } catch (_: Exception) {
                 null
             }
@@ -330,11 +353,13 @@ class BrowserActivity : Activity() {
             val disposition = probe?.contentDisposition.orEmpty()
             val contentType = probe?.contentType.orEmpty().lowercase()
             val isAttachment = disposition.contains("attachment", ignoreCase = true)
-            val isBinaryDownload = contentType.startsWith("application/octet-stream") ||
+            val isBinaryDownload =
+                contentType.startsWith("application/octet-stream") ||
                 contentType.contains("application/x-7z") ||
                 contentType.contains("application/zip") ||
                 contentType.contains("application/x-rar") ||
-                contentType.contains("application/vnd.android.package-archive")
+                contentType.contains("application/vnd.android.package-archive") ||
+                contentType == "application/pdf"
 
             mainHandler.post {
                 if (isAttachment || isBinaryDownload) {
@@ -342,9 +367,9 @@ class BrowserActivity : Activity() {
                         this,
                         url,
                         showToast = true,
-                        userAgent = currentWebView().settings.userAgentString,
+                        userAgent = ua,
                         referer = null,
-                        mimeType = probe?.contentType
+                        mimeType = probe?.contentType ?: incomingMimeType
                     )
                 } else {
                     createBrowsingTab(url)
