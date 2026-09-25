@@ -279,10 +279,90 @@ class BrowserActivity : Activity() {
     }
 
     private fun handleOpenUrlIntent(intent: Intent?) {
-        val url = intent?.getStringExtra(EXTRA_OPEN_URL)
-        if (!url.isNullOrBlank()) {
-            createBrowsingTab(url)
+        // روابط قادمة من تطبيقات أخرى (مثل ChatGPT) تصل عادةً كـ ACTION_VIEW + data URI.
+        // EXTRA_OPEN_URL يبقى مدعومًا للتنقل الداخلي في التطبيق.
+        val extraUrl = intent?.getStringExtra(EXTRA_OPEN_URL)
+        val incomingUrl = extraUrl?.takeIf { it.isNotBlank() }
+            ?: intent?.dataString?.takeIf {
+                intent.action == Intent.ACTION_VIEW &&
+                    (it.startsWith("http://", ignoreCase = true) ||
+                     it.startsWith("https://", ignoreCase = true))
+            }
+
+        if (!incomingUrl.isNullOrBlank()) {
+            openIncomingUrl(incomingUrl)
         }
+    }
+
+    /**
+     * يعالج الرابط القادم من خارج المتصفح.
+     *
+     * إذا كان الرابط يبدو ملفًا مباشرًا (أو يعيد Content-Disposition: attachment /
+     * application/octet-stream) يذهب مباشرة إلى مدير التنزيل، وإلا يفتح في تبويب جديد.
+     */
+    private fun openIncomingUrl(rawUrl: String) {
+        val url = rawUrl.trim()
+        if (url.isBlank()) return
+
+        if (isLikelyDownloadUrl(url)) {
+            DownloadsRepository.startNewDownload(
+                this,
+                url,
+                showToast = true,
+                userAgent = currentWebView().settings.userAgentString,
+                referer = null
+            )
+            return
+        }
+
+        // نفحص ترويسات الرابط في الخلفية حتى لا تتجمد واجهة المتصفح.
+        bgExecutor.execute {
+            val probe = try {
+                DownloadManagerEngine().probe(
+                    url,
+                    currentWebView().settings.userAgentString,
+                    null
+                )
+            } catch (_: Exception) {
+                null
+            }
+
+            val disposition = probe?.contentDisposition.orEmpty()
+            val contentType = probe?.contentType.orEmpty().lowercase()
+            val isAttachment = disposition.contains("attachment", ignoreCase = true)
+            val isBinaryDownload = contentType.startsWith("application/octet-stream") ||
+                contentType.contains("application/x-7z") ||
+                contentType.contains("application/zip") ||
+                contentType.contains("application/x-rar") ||
+                contentType.contains("application/vnd.android.package-archive")
+
+            mainHandler.post {
+                if (isAttachment || isBinaryDownload) {
+                    DownloadsRepository.startNewDownload(
+                        this,
+                        url,
+                        showToast = true,
+                        userAgent = currentWebView().settings.userAgentString,
+                        referer = null,
+                        mimeType = probe?.contentType
+                    )
+                } else {
+                    createBrowsingTab(url)
+                }
+            }
+        }
+    }
+
+    private fun isLikelyDownloadUrl(url: String): Boolean {
+        val path = try { Uri.parse(url).path.orEmpty().lowercase() } catch (_: Exception) { "" }
+        val fileExtensions = listOf(
+            ".apk", ".xapk", ".apks", ".zip", ".rar", ".7z", ".tar", ".gz",
+            ".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx",
+            ".txt", ".csv", ".epub", ".mobi", ".iso", ".exe", ".msi",
+            ".mp3", ".wav", ".flac", ".m4a", ".mp4", ".mkv", ".avi",
+            ".jpg", ".jpeg", ".png", ".webp", ".gif"
+        )
+        return fileExtensions.any { path.endsWith(it) }
     }
 
     // ---------------- استعادة/حفظ التبويبات ----------------
