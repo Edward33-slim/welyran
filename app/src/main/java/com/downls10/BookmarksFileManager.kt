@@ -26,7 +26,7 @@ object BookmarksFileManager {
                     put(MediaStore.MediaColumns.RELATIVE_PATH, DownloadsRepository.DOWNLOAD_DIRECTORY_NAME + "/")
                     put(MediaStore.MediaColumns.IS_PENDING, 1)
                 }
-                val collection = MediaStore.Downloads.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
+                val collection = MediaStore.Files.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
                 val uri = activity.contentResolver.insert(collection, values)
                     ?: return Pair(false, "تعذّر إنشاء ملف العلامات داخل DownloadLS10")
                 try {
