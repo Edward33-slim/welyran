@@ -105,6 +105,7 @@ object DownloadsRepository {
         trackActivities(context)
         ensureLoaded(appContext)
         requestNotificationPermissionOnce(context)
+        requestStoragePermissionForAndroid10(context)
         var typed = url.trim()
         if (typed.isEmpty()) return
 
@@ -214,6 +215,18 @@ object DownloadsRepository {
         }
     }
     private var askedNotificationPermission = false
+    private var askedStoragePermission = false
+
+    /** Android 10: نكتب مباشرة داخل DownloadLS10 باستخدام legacy external storage. */
+    private fun requestStoragePermissionForAndroid10(context: Context) {
+        if (askedStoragePermission || Build.VERSION.SDK_INT != Build.VERSION_CODES.Q || context !is Activity) return
+        askedStoragePermission = true
+        try {
+            if (context.checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
+                context.requestPermissions(arrayOf(Manifest.permission.WRITE_EXTERNAL_STORAGE), 7302)
+            }
+        } catch (_: Exception) { }
+    }
 
     /** من أندرويد 13 يلزم إذن الإشعارات ليظهر إشعار التنزيل: نطلبه مرة واحدة. */
     private fun requestNotificationPermissionOnce(context: Context) {
@@ -284,7 +297,7 @@ object DownloadsRepository {
             referer = referer
         )
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             val uri = createPendingDownload(appContext, item.fileName)
             if (uri == null) {
                 toast(appContext, "تعذّر إنشاء ملف التنزيل داخل DownloadLS10")
@@ -681,7 +694,7 @@ object DownloadsRepository {
     }
 
     private fun createPendingDownload(context: Context, fileName: String): Uri? {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return null
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return null
         val values = ContentValues().apply {
             put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
             put(MediaStore.MediaColumns.MIME_TYPE, mimeTypeFor(fileName))
