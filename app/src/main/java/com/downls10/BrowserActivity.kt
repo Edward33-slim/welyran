@@ -180,14 +180,7 @@ class BrowserActivity : Activity() {
 
         val knownPackage = "com.openai.chatgpt"
         val referrerName = intent.getStringExtra(Intent.EXTRA_REFERRER_NAME).orEmpty()
-        if (referrerName.contains(knownPackage, ignoreCase = true)) return true
-
-        val referrer = try { intent.referrer } catch (_: Exception) { null }
-        if (referrer?.scheme == "android-app" && referrer.host.equals(knownPackage, ignoreCase = true)) {
-            return true
-        }
-
-        return false
+        return referrerName.contains(knownPackage, ignoreCase = true)
     }
 
     private fun setupCustomTabUi() {
