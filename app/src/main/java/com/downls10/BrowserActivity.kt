@@ -82,10 +82,6 @@ class BrowserActivity : Activity() {
     private lateinit var editUrl: EditText
     private lateinit var progressBar: ProgressBar
     private lateinit var btnTabs: Button
-    private lateinit var downloadBar: View
-    private lateinit var downloadBarProgress: ProgressBar
-    private lateinit var downloadBarFileName: TextView
-    private lateinit var downloadBarStatus: TextView
 
     private val tabs = mutableListOf<Tab>()
     private var currentTabIndex = 0
@@ -125,18 +121,6 @@ class BrowserActivity : Activity() {
         webViewContainer = findViewById(R.id.webViewContainer)
         editUrl = findViewById(R.id.editUrl)
         progressBar = findViewById(R.id.progressBar)
-        downloadBar = findViewById(R.id.downloadBar)
-        downloadBarProgress = findViewById(R.id.downloadBarProgress)
-        downloadBarFileName = findViewById(R.id.downloadBarFileName)
-        downloadBarStatus = findViewById(R.id.downloadBarStatus)
-        findViewById<Button>(R.id.downloadBarOpen).setOnClickListener {
-            startActivity(Intent(this, MainActivity::class.java).apply {
-                flags = Intent.FLAG_ACTIVITY_REORDER_TO_FRONT
-            })
-        }
-        findViewById<Button>(R.id.downloadBarClose).setOnClickListener {
-            downloadBar.visibility = View.GONE
-        }
         val btnBookmarkStar = findViewById<Button>(R.id.btnBookmarkStar)
         val btnForward = findViewById<Button>(R.id.btnForward)
         btnTabs = findViewById(R.id.btnTabs)
@@ -144,8 +128,6 @@ class BrowserActivity : Activity() {
 
         CookieManager.getInstance().setAcceptCookie(true)
         DownloadsRepository.ensureLoaded(this)
-        DownloadsRepository.addListener(downloadBarListener)
-        updateDownloadBar()
         hideMedia = settingsPrefs().getBoolean("hideMedia", false)
         nightMode = settingsPrefs().getBoolean("nightMode", false)
 
@@ -1286,80 +1268,6 @@ class BrowserActivity : Activity() {
         }
     }
 
-    private val downloadBarListener: () -> Unit = {
-        mainHandler.post { updateDownloadBar() }
-    }
-
-    private fun updateDownloadBar() {
-        if (!::downloadBar.isInitialized) return
-        val active = DownloadsRepository.downloadList.firstOrNull {
-            it.state == DownloadState.DOWNLOADING || it.state == DownloadState.PAUSED
-        }
-        val recent = DownloadsRepository.downloadList.firstOrNull {
-            it.state == DownloadState.COMPLETED
-        }
-        val item = active ?: recent ?: run {
-            downloadBar.visibility = View.GONE
-            return
-        }
-
-        downloadBar.visibility = View.VISIBLE
-        downloadBarFileName.text = item.fileName
-        downloadBarProgress.progress = item.progress.coerceIn(0, 100)
-        downloadBarStatus.text = when (item.state) {
-            DownloadState.DOWNLOADING -> "${item.progress}%  ${item.speed}"
-            DownloadState.PAUSED -> "متوقف مؤقتاً — ${item.progress}%"
-            DownloadState.COMPLETED -> "اكتمل التنزيل"
-            else -> item.status
-        }
-
-        if (item.state == DownloadState.COMPLETED) {
-            downloadBar.postDelayed({
-                if (DownloadsRepository.downloadList.firstOrNull { it.state == DownloadState.DOWNLOADING || it.state == DownloadState.PAUSED } == null) {
-                    downloadBar.visibility = View.GONE
-                }
-            }, 3500L)
-        }
-    }
-
-    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
-        super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode == FILE_CHOOSER_CODE) {
-            val results: Array<Uri>? = if (resultCode == Activity.RESULT_OK && data?.data != null) arrayOf(data.data!!) else null
-            filePathCallback?.onReceiveValue(results)
-            filePathCallback = null
-            return
-        }
-
-        if (requestCode == BookmarksFileManager.EXPORT_REQUEST_CODE) {
-            val content = pendingBookmarkExportContent
-            pendingBookmarkExportContent = null
-            if (resultCode == Activity.RESULT_OK && data?.data != null && content != null) {
-                val result = BookmarksFileManager.writeExport(this, data.data!!, content)
-                Toast.makeText(this, if (result.first) "تم تصدير العلامات المرجعية" else "فشل التصدير: ${result.second}", Toast.LENGTH_LONG).show()
-            }
-            return
-        }
-
-        if (requestCode == BookmarksFileManager.IMPORT_REQUEST_CODE) {
-            if (resultCode == Activity.RESULT_OK && data?.data != null) {
-                val result = BookmarksFileManager.readImport(this, data.data!!)
-                val html = result.first
-                if (html == null) {
-                    Toast.makeText(this, "فشل الاستيراد: ${result.second}", Toast.LENGTH_LONG).show()
-                } else {
-                    val parsed = BrowserStorage.parseBookmarksHtml(html)
-                    if (parsed.isEmpty()) {
-                        Toast.makeText(this, "لم يتم العثور على علامات مرجعية في الملف", Toast.LENGTH_LONG).show()
-                    } else {
-                        val added = BrowserStorage.importBookmarks(this, parsed)
-                        Toast.makeText(this, "تم استيراد $added علامة مرجعية جديدة", Toast.LENGTH_LONG).show()
-                    }
-                }
-            }
-        }
-    }
-
     private fun isActiveTab(view: WebView): Boolean =
         tabs.isNotEmpty() && currentTabIndex < tabs.size && tabs[currentTabIndex].webView == view
 
@@ -2366,7 +2274,6 @@ class BrowserActivity : Activity() {
     }
 
     override fun onDestroy() {
-        DownloadsRepository.removeListener(downloadBarListener)
         tabs.forEach { it.webView.destroy() }
         super.onDestroy()
     }
