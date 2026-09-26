@@ -1303,7 +1303,7 @@ class BrowserActivity : Activity() {
     }
 
     private fun visitedSiteColor(url: String?, unvisitedColor: Int = Color.parseColor("#00FFFF")): Int {
-        return if (isVisitedSite(url)) Color.parseColor("#B388FF") else unvisitedColor
+        return Color.parseColor("#BDBDBD")
     }
 
     private fun recordVisitedNavigation(url: String?) {
@@ -1651,79 +1651,8 @@ class BrowserActivity : Activity() {
      * بقاء التطبيق مفتوحاً أو على حالة WebView الحالية.
      */
     private fun applyVisitedLinksJs(webView: WebView) {
-        val visitedJson = VisitedSites.asJsonForInjection(this)
-        val pageHost = try { Uri.parse(webView.url ?: "").host } catch (e: Exception) { null }
-        val pageUrlsJson = VisitedSites.urlsForHostJson(this, pageHost)
-        val js = """
-            (function(){
-                window.__downls10Visited = $visitedJson;
-                window.__downls10PageUrls = new Set($pageUrlsJson);
-                function normHost(h) { return (h || '').toLowerCase().replace(/^www\./, ''); }
-                function normUrl(u) { return u.split('#')[0].replace(/\/$/, ''); }
-                var pageHost = normHost(location.hostname);
-
-                // لون الرابط المزار: يُفرض على الرابط وعلى كل ما بداخله (مثل عناوين h3 في نتائج البحث)
-                if (!document.getElementById('__downls10_visited_style__')) {
-                    var st = document.createElement('style');
-                    st.id = '__downls10_visited_style__';
-                    st.textContent = 'a[data-downls10-visited="1"], a[data-downls10-visited="1"] * ' +
-                        '{ color: #B388FF !important; -webkit-text-fill-color: #B388FF !important; }';
-                    (document.head || document.documentElement).appendChild(st);
-                }
-
-                function resolveLink(a) {
-                    var u;
-                    try { u = new URL(a.href, location.href); } catch(e) { return null; }
-                    if (u.protocol !== 'http:' && u.protocol !== 'https:') return null;
-                    var host = normHost(u.hostname);
-                    var full = u.href;
-                    // رابط جوجل الوسيط: نستخدم الموقع الحقيقي
-                    if (/(^|\.)google\.[a-z.]+${'$'}/.test(host) && u.pathname === '/url') {
-                        var t = u.searchParams.get('q') || u.searchParams.get('url');
-                        if (t) {
-                            try { var r = new URL(t); host = normHost(r.hostname); full = r.href; } catch(e) {}
-                        }
-                    }
-                    return { host: host, url: normUrl(full) };
-                }
-                function isVisited(info) {
-                    // رابط داخل نفس الموقع: يُعتبر مزاراً فقط إذا زرت هذا الرابط بالذات
-                    if (info.host === pageHost) return window.__downls10PageUrls.has(info.url);
-                    // رابط لموقع آخر: يُعتبر مزاراً إذا زرت الموقع
-                    return window.__downls10Visited.hasOwnProperty(info.host);
-                }
-                function markLink(a) {
-                    var info = resolveLink(a);
-                    if (!info) return;
-                    a.setAttribute('data-downls10-marked', '1');
-                    if (isVisited(info)) {
-                        a.setAttribute('data-downls10-visited', '1');
-                    } else {
-                        a.removeAttribute('data-downls10-visited');
-                        if (info.host !== pageHost) a.style.color = '#00FFFF';
-                    }
-                }
-                function scanAll(root) {
-                    var links = root.querySelectorAll ? root.querySelectorAll('a[href]') : [];
-                    for (var i = 0; i < links.length; i++) markLink(links[i]);
-                }
-                scanAll(document);
-                if (!window.__downls10VisitedObserver) {
-                    window.__downls10VisitedObserver = new MutationObserver(function(mutations) {
-                        mutations.forEach(function(m) {
-                            m.addedNodes && m.addedNodes.forEach(function(node) {
-                                if (node.nodeType !== 1) return;
-                                if (node.tagName === 'A') markLink(node);
-                                scanAll(node);
-                            });
-                        });
-                    });
-                    if (document.body) window.__downls10VisitedObserver.observe(document.body, { childList: true, subtree: true });
-                    window.addEventListener('pageshow', function() { scanAll(document); });
-                }
-            })();
-        """
-        webView.evaluateJavascript(js, null)
+        // Intentionally empty: websites keep their own native link/visited-link colors.
+        // DownLS10 must not force a purple/cyan color onto page content.
     }
 
     // ⭐ إضافة الصفحة الحالية مباشرة
