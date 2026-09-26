@@ -115,7 +115,10 @@ class BrowserActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        customTabMode = isCustomTabIntent(intent)
+        // ChatGPT can launch a Custom Tab using DownLS10 as the provider.
+        // When ChatGPT identifies itself as the referrer, skip the Custom Tab shell
+        // and open the URL directly in the normal DownLS10 browser UI.
+        customTabMode = isCustomTabIntent(intent) && !isChatGPTCustomTabIntent(intent)
         setContentView(R.layout.activity_browser)
 
         webViewContainer = findViewById(R.id.webViewContainer)
@@ -170,6 +173,27 @@ class BrowserActivity : Activity() {
             intent.hasExtra("androidx.browser.customtabs.extra.SESSION") ||
             intent.hasExtra("android.support.customtabs.extra.SESSION_ID") ||
             intent.hasExtra("androidx.browser.customtabs.extra.SESSION_ID")
+    }
+
+    private fun isChatGPTCustomTabIntent(intent: Intent?): Boolean {
+        if (!isCustomTabIntent(intent)) return false
+
+        val knownPackage = "com.openai.chatgpt"
+        val referrerName = intent.getStringExtra(Intent.EXTRA_REFERRER_NAME).orEmpty()
+        if (referrerName.contains(knownPackage, ignoreCase = true)) return true
+
+        val referrer = try { intent.referrer } catch (_: Exception) { null }
+        if (referrer?.scheme == "android-app" && referrer.host.equals(knownPackage, ignoreCase = true)) {
+            return true
+        }
+
+        val parcelableReferrer = try {
+            intent.getParcelableExtra<Uri>(Intent.EXTRA_REFERRER)
+        } catch (_: Exception) {
+            null
+        }
+        return parcelableReferrer?.scheme == "android-app" &&
+            parcelableReferrer.host.equals(knownPackage, ignoreCase = true)
     }
 
     private fun setupCustomTabUi() {
@@ -426,6 +450,17 @@ class BrowserActivity : Activity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
+
+        if (isChatGPTCustomTabIntent(intent)) {
+            val url = intent.dataString.orEmpty()
+            if (url.isNotBlank()) {
+                exitCustomTabMode()
+                createBrowsingTab(url)
+                persistTabs()
+            }
+            return
+        }
+
         handleOpenUrlIntent(intent)
     }
 
