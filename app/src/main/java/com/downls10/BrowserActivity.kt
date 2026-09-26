@@ -274,19 +274,17 @@ class BrowserActivity : Activity() {
         popup.setOnMenuItemClickListener { item ->
             when (item.title.toString()) {
                 "Open in DownLS10" -> {
-                    // افتح نسخة المتصفح الكاملة فوراً بدل تحويل واجهة الـ Custom Tab
-                    // داخل نفس النشاط. هذا يمنع الرجوع/البقاء داخل واجهة ChatGPT
-                    // ويزيل فحص الروابط البطيء الخاص بروابط الدخول من التطبيقات.
+                    // لا ننشئ BrowserActivity ثانية هنا، لأن Android قد يعيد
+                    // استخدام نفس الـ Activity عبر onNewIntent ثم يؤدي finish() إلى إغلاق
+                    // المتصفح كله. نحول نفس الواجهة من Custom Tab إلى المتصفح الكامل
+                    // ونفتح الرابط مباشرة بدون فحص HTTP البطيء.
                     val url = currentWebView().url.orEmpty()
                     if (url.isBlank()) {
                         exitCustomTabMode()
                     } else {
-                        val browserIntent = Intent(this, BrowserActivity::class.java).apply {
-                            putExtra(EXTRA_OPEN_URL, url)
-                            putExtra(EXTRA_DIRECT_BROWSER, true)
-                        }
-                        startActivity(browserIntent)
-                        finish()
+                        exitCustomTabMode()
+                        createBrowsingTab(url)
+                        persistTabs()
                     }
                     true
                 }
