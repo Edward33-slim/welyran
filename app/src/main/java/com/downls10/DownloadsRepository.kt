@@ -608,7 +608,8 @@ object DownloadsRepository {
                 saveDir = saveDir,
                 onProgress = { progress, speed, downloaded, total ->
                     item.progress = progress
-                    item.speed = speed                    item.downloadedBytes = downloaded
+                    item.speed = speed
+                    item.downloadedBytes = downloaded
                     item.status = "جاري التحميل: $progress%"
                     notifyChanged(appContext)
                 },
