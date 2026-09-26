@@ -60,14 +60,27 @@ object DownloadsRepository {
     fun addListener(listener: () -> Unit) { listeners.add(listener) }
     fun removeListener(listener: () -> Unit) { listeners.remove(listener) }
 
+    private val persistenceExecutor = Executors.newSingleThreadExecutor()
+
     private fun notifyChanged(context: Context, forceSave: Boolean = false) {
-        mainHandler.post { listeners.toList().forEach { it() } }
+        // تحديث الواجهة فوراً إذا كان التغيير ناتجاً عن نقرة من المستخدم.
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            listeners.toList().forEach { it() }
+        } else {
+            mainHandler.post { listeners.toList().forEach { it() } }
+        }
+
         val appContext = context.applicationContext
         mainHandler.post { runCatching { DownloadNotifier.sync(appContext) } }
+
         val now = System.currentTimeMillis()
         if (forceSave || now - lastSaveTime > SAVE_THROTTLE_MS) {
             lastSaveTime = now
-            DownloadPersistence.save(context.applicationContext, downloadList)
+            // لا نحفظ JSON على UI thread حتى لا تتأخر نقرات المتصفح والإيقاف والاستئناف.
+            val snapshot = downloadList.toList()
+            persistenceExecutor.execute {
+                runCatching { DownloadPersistence.save(appContext, snapshot) }
+            }
         }
     }
 
@@ -198,7 +211,6 @@ object DownloadsRepository {
             toast(appContext, "لا يوجد تطبيق تورنت على الجهاز لفتح رابط magnet")
         }
     }
-
     private var askedNotificationPermission = false
 
     /** من أندرويد 13 يلزم إذن الإشعارات ليظهر إشعار التنزيل: نطلبه مرة واحدة. */
@@ -397,8 +409,7 @@ object DownloadsRepository {
         return runOnMainBlocking { openLocalSinkOnMain(appContext, rawName, mime, totalBytes, label) }
     }
 
-    private fun openLocalSinkOnMain(
-        appContext: Context, rawName: String?, mime: String?, totalBytes: Long, label: String
+    private fun openLocalSinkOnMain(        appContext: Context, rawName: String?, mime: String?, totalBytes: Long, label: String
     ): LocalSink? {
         ensureLoaded(appContext)
         var name = sanitizeFileName(rawName?.takeIf { it.isNotBlank() } ?: "download_${System.currentTimeMillis()}")
@@ -597,8 +608,7 @@ object DownloadsRepository {
                 saveDir = saveDir,
                 onProgress = { progress, speed, downloaded, total ->
                     item.progress = progress
-                    item.speed = speed
-                    item.downloadedBytes = downloaded
+                    item.speed = speed                    item.downloadedBytes = downloaded
                     item.status = "جاري التحميل: $progress%"
                     notifyChanged(appContext)
                 },
@@ -797,8 +807,7 @@ object DownloadsRepository {
         if (lifecycleRegistered) return
         val app = context.applicationContext as? Application ?: return
         lifecycleRegistered = true
-        app.registerActivityLifecycleCallbacks(object : Application.ActivityLifecycleCallbacks {
-            override fun onActivityResumed(activity: Activity) { topActivity = WeakReference(activity) }
+        app.registerActivityLifecycleCallbacks(object : Application.ActivityLifecycleCallbacks {            override fun onActivityResumed(activity: Activity) { topActivity = WeakReference(activity) }
             override fun onActivityPaused(activity: Activity) {
                 if (topActivity?.get() === activity) {
                     hideMessage()
