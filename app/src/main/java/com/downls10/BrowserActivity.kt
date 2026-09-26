@@ -75,6 +75,7 @@ class BrowserActivity : Activity() {
 
     companion object {
         const val EXTRA_OPEN_URL = "extra_open_url"
+        const val EXTRA_DIRECT_BROWSER = "extra_direct_browser"
     }
 
     private lateinit var webViewContainer: FrameLayout
@@ -255,7 +256,20 @@ class BrowserActivity : Activity() {
         popup.setOnMenuItemClickListener { item ->
             when (item.title.toString()) {
                 "Open in DownLS10" -> {
-                    exitCustomTabMode()
+                    // افتح نسخة المتصفح الكاملة فوراً بدل تحويل واجهة الـ Custom Tab
+                    // داخل نفس النشاط. هذا يمنع الرجوع/البقاء داخل واجهة ChatGPT
+                    // ويزيل فحص الروابط البطيء الخاص بروابط الدخول من التطبيقات.
+                    val url = currentWebView().url.orEmpty()
+                    if (url.isBlank()) {
+                        exitCustomTabMode()
+                    } else {
+                        val browserIntent = Intent(this, BrowserActivity::class.java).apply {
+                            putExtra(EXTRA_OPEN_URL, url)
+                            putExtra(EXTRA_DIRECT_BROWSER, true)
+                        }
+                        startActivity(browserIntent)
+                        finish()
+                    }
                     true
                 }
                 "نسخ الرابط" -> {
@@ -438,7 +452,14 @@ class BrowserActivity : Activity() {
             ?: sharedText?.takeIf { isSupportedSharedUrl(it) }
 
         if (!incomingUrl.isNullOrBlank()) {
-            openIncomingUrl(incomingUrl, intent?.type)
+            if (intent?.getBooleanExtra(EXTRA_DIRECT_BROWSER, false) == true) {
+                // من زر "Open in DownLS10": افتح الصفحة مباشرة في WebView
+                // بدون فحص HTTP في الخلفية حتى يكون الانتقال فورياً.
+                createBrowsingTab(incomingUrl)
+                persistTabs()
+            } else {
+                openIncomingUrl(incomingUrl, intent?.type)
+            }
         }
     }
 
