@@ -358,9 +358,12 @@ class BrowserActivity : Activity() {
             return
         }
 
+        // نحصل على User-Agent من WebView على خيط الواجهة أولاً.
+        // لا يجوز استدعاء أي WebView API من خيط الخلفية.
+        val ua = currentWebView().settings.userAgentString
+
         // نفحص ترويسات الرابط في الخلفية حتى لا تتجمد واجهة المتصفح.
         bgExecutor.execute {
-            val ua = currentWebView().settings.userAgentString
             val probe = try {
                 DownloadManagerEngine().probe(url, ua, null)
             } catch (_: Exception) {
