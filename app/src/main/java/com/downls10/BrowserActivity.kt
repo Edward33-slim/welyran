@@ -1324,11 +1324,6 @@ class BrowserActivity : Activity() {
         }
     }
 
-    override fun onDestroy() {
-        DownloadsRepository.removeListener(downloadBarListener)
-        super.onDestroy()
-    }
-
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
         if (requestCode == FILE_CHOOSER_CODE) {
@@ -2373,6 +2368,7 @@ class BrowserActivity : Activity() {
     }
 
     override fun onDestroy() {
+        DownloadsRepository.removeListener(downloadBarListener)
         tabs.forEach { it.webView.destroy() }
         super.onDestroy()
     }
