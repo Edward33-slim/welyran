@@ -79,74 +79,11 @@
         android:layout_below="@id/addressBar"
         android:max="100" />
 
-    <LinearLayout
-        android:id="@+id/downloadBar"
-        android:layout_width="match_parent"
-        android:layout_height="58dp"
-        android:layout_alignParentBottom="true"
-        android:background="#202124"
-        android:gravity="center_vertical"
-        android:orientation="horizontal"
-        android:paddingStart="12dp"
-        android:paddingEnd="8dp"
-        android:visibility="gone">
-
-        <ProgressBar
-            android:id="@+id/downloadBarProgress"
-            style="?android:attr/progressBarStyleHorizontal"
-            android:layout_width="72dp"
-            android:layout_height="4dp"
-            android:max="100" />
-
-        <LinearLayout
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:layout_marginStart="10dp"
-            android:orientation="vertical">
-
-            <TextView
-                android:id="@+id/downloadBarFileName"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:maxLines="1"
-                android:ellipsize="middle"
-                android:textColor="#FFFFFF"
-                android:textSize="13sp" />
-
-            <TextView
-                android:id="@+id/downloadBarStatus"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:maxLines="1"
-                android:textColor="#BDBDBD"
-                android:textSize="11sp" />
-        </LinearLayout>
-
-        <Button
-            android:id="@+id/downloadBarOpen"
-            android:layout_width="44dp"
-            android:layout_height="44dp"
-            android:background="?android:attr/selectableItemBackground"
-            android:text="↓"
-            android:textColor="#FFFFFF"
-            android:textSize="22sp" />
-
-        <Button
-            android:id="@+id/downloadBarClose"
-            android:layout_width="38dp"
-            android:layout_height="44dp"
-            android:background="?android:attr/selectableItemBackground"
-            android:text="✕"
-            android:textColor="#FFFFFF"
-            android:textSize="17sp" />
-    </LinearLayout>
-
     <FrameLayout
         android:id="@+id/webViewContainer"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:layout_below="@id/progressBar"
-        android:layout_above="@id/downloadBar" />
+ />
 
 </RelativeLayout>
