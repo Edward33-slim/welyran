@@ -22,7 +22,7 @@
         android:supportsRtl="true"
         android:theme="@android:style/Theme.DeviceDefault"
         android:usesCleartextTraffic="true">
-        
+
         <activity
             android:name=".MainActivity"
             android:exported="false"
@@ -39,7 +39,6 @@
                 <category android:name="android.intent.category.APP_BROWSER" />
             </intent-filter>
 
-            <!-- Handle normal web links so Android can offer DownLS10 as a browser. -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
@@ -48,7 +47,6 @@
                 <data android:scheme="https" />
             </intent-filter>
 
-            <!-- Accept shared URLs/text from apps such as ChatGPT. -->
             <intent-filter>
                 <action android:name="android.intent.action.SEND" />
                 <category android:name="android.intent.category.DEFAULT" />
@@ -60,6 +58,14 @@
             android:name=".DownloadService"
             android:exported="false"
             android:foregroundServiceType="dataSync" />
+
+        <service
+            android:name=".DownLS10CustomTabsService"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.support.customtabs.action.CustomTabsService" />
+            </intent-filter>
+        </service>
 
         <provider
             android:name="androidx.startup.InitializationProvider"
