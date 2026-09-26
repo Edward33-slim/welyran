@@ -11,8 +11,8 @@ android {
         applicationId = "com.downls10"
         minSdk = 24
         targetSdk = 34
-        versionCode = 60
-        versionName = "6.0"
+        versionCode = 61
+        versionName = "6.1"
     }
 
     signingConfigs {
