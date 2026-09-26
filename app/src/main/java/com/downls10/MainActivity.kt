@@ -8,6 +8,7 @@ import android.content.Context
 import android.content.Intent
 import android.graphics.Color
 import android.os.Bundle
+import android.app.role.RoleManager
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
@@ -32,6 +33,7 @@ class MainActivity : Activity() {
         setContentView(R.layout.activity_main)
         showSpeed = mainPrefs().getBoolean("showSpeed", true)
         DownloadsRepository.ensureLoaded(this)
+        requestDefaultBrowserRoleIfNeeded()
 
         val btnAddUrl = findViewById<Button>(R.id.btnAddUrl)
         val btnBrowser = findViewById<Button>(R.id.btnBrowser)
@@ -66,6 +68,20 @@ class MainActivity : Activity() {
     override fun onPause() {
         super.onPause()
         DownloadsRepository.removeListener(refreshListener)
+    }
+
+    private fun requestDefaultBrowserRoleIfNeeded() {
+        if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.Q) return
+
+        val roleManager = getSystemService(RoleManager::class.java) ?: return
+        if (!roleManager.isRoleAvailable(RoleManager.ROLE_BROWSER)) return
+        if (roleManager.isRoleHeld(RoleManager.ROLE_BROWSER)) return
+
+        try {
+            startActivityForResult(roleManager.createRequestRoleIntent(RoleManager.ROLE_BROWSER), 4101)
+        } catch (_: Exception) {
+            // Some Android builds restrict role requests; normal browser intent handling remains available.
+        }
     }
 
     private fun showAddUrlDialog() {
