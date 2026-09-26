@@ -287,7 +287,7 @@ object DownloadsRepository {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             val uri = createPendingDownload(appContext, item.fileName)
             if (uri == null) {
-                toast(appContext, "تعذّر إنشاء ملف التنزيل داخل Download")
+                toast(appContext, "تعذّر إنشاء ملف التنزيل داخل DownloadLS10")
                 return
             }
             // إذا كان في Download ملف بنفس الاسم لا يستطيع التطبيق رؤيته، يعيد النظام تسمية الملف الجديد تلقائيًا
@@ -566,7 +566,7 @@ object DownloadsRepository {
                 ?: createPendingDownload(appContext, item.fileName)?.also { item.localUri = it.toString() }
             if (uri == null) {
                 item.state = DownloadState.ERROR
-                item.status = "فشل: تعذّر إنشاء ملف Download"
+                item.status = "فشل: تعذّر إنشاء ملف DownloadLS10"
                 notifyChanged(appContext, forceSave = true)
                 return
             }
@@ -689,7 +689,7 @@ object DownloadsRepository {
             put(MediaStore.MediaColumns.IS_PENDING, 1)
         }
         return runCatching {
-            context.contentResolver.insert(MediaStore.Downloads.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY), values)
+            context.contentResolver.insert(MediaStore.Files.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY), values)
         }.getOrNull()
     }
 
@@ -705,7 +705,7 @@ object DownloadsRepository {
 
     private fun findDownloadUriByName(resolver: ContentResolver, fileName: String): Uri? {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return null
-        val collection = MediaStore.Downloads.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
+        val collection = MediaStore.Files.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
         return resolver.query(
             collection,
             arrayOf(MediaStore.MediaColumns._ID),
