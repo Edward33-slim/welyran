@@ -187,13 +187,7 @@ class BrowserActivity : Activity() {
             return true
         }
 
-        val parcelableReferrer = try {
-            intent.getParcelableExtra<Uri>(Intent.EXTRA_REFERRER)
-        } catch (_: Exception) {
-            null
-        }
-        return parcelableReferrer?.scheme == "android-app" &&
-            parcelableReferrer.host.equals(knownPackage, ignoreCase = true)
+        return false
     }
 
     private fun setupCustomTabUi() {
