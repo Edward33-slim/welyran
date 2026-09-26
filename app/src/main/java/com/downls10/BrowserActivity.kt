@@ -44,6 +44,8 @@ import android.widget.ProgressBar
 import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
+import android.widget.PopupMenu
+import androidx.browser.customtabs.CustomTabsIntent
 import java.net.HttpURLConnection
 import java.net.URL
 import java.util.concurrent.Executors
@@ -81,6 +83,8 @@ class BrowserActivity : Activity() {
 
     private val tabs = mutableListOf<Tab>()
     private var currentTabIndex = 0
+    private var customTabMode = false
+    private var customTabToolbar: View? = null
 
     private var hideMedia = false
     private var nightMode = false
@@ -109,6 +113,7 @@ class BrowserActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        customTabMode = isCustomTabIntent(intent)
         setContentView(R.layout.activity_browser)
 
         webViewContainer = findViewById(R.id.webViewContainer)
@@ -146,6 +151,8 @@ class BrowserActivity : Activity() {
         btnTabs.setOnClickListener { showTabsDialog() }
         btnBrowserMenu.setOnClickListener { showBrowserMenu() }
 
+        if (customTabMode) setupCustomTabUi()
+
         if (savedInstanceState != null && savedInstanceState.getInt("tabCount", -1) >= 0) {
             restoreTabsFromInstanceState(savedInstanceState)
         } else {
@@ -153,6 +160,137 @@ class BrowserActivity : Activity() {
         }
         handleOpenUrlIntent(intent)
         requestBrowserRoleIfNeeded()
+    }
+
+    private fun isCustomTabIntent(intent: Intent?): Boolean {
+        if (intent == null || intent.action != Intent.ACTION_VIEW) return false
+        return intent.hasExtra(CustomTabsIntent.EXTRA_SESSION) ||
+            intent.hasExtra("androidx.browser.customtabs.extra.SESSION") ||
+            intent.hasExtra("android.support.customtabs.extra.SESSION_ID") ||
+            intent.hasExtra("androidx.browser.customtabs.extra.SESSION_ID")
+    }
+
+    private fun setupCustomTabUi() {
+        val addressBar = findViewById<View>(R.id.addressBar)
+        addressBar.visibility = View.GONE
+
+        val root = findViewById<ViewGroup>(android.R.id.content).getChildAt(0) as? ViewGroup ?: return
+        val toolbar = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setBackgroundColor(Color.parseColor("#121212"))
+            setPadding(6, 0, 6, 0)
+            layoutDirection = View.LAYOUT_DIRECTION_LTR
+        }
+
+        val menuButton = Button(this).apply {
+            text = "⋮"
+            textSize = 25f
+            setTextColor(Color.WHITE)
+            background = null
+            setPadding(4, 0, 4, 0)
+            setOnClickListener { showCustomTabMenu(this) }
+        }
+        toolbar.addView(menuButton, LinearLayout.LayoutParams(48, 52))
+
+        val domain = TextView(this).apply {
+            text = customTabDomain(intent?.dataString)
+            textSize = 18f
+            setTextColor(Color.WHITE)
+            gravity = Gravity.CENTER_VERTICAL
+            maxLines = 1
+            ellipsize = android.text.TextUtils.TruncateAt.END
+            setPadding(8, 0, 8, 0)
+            layoutParams = LinearLayout.LayoutParams(0, 52, 1f)
+            tag = "downls10_cct_domain"
+        }
+        toolbar.addView(domain)
+
+        val closeButton = Button(this).apply {
+            text = "✕"
+            textSize = 22f
+            setTextColor(Color.WHITE)
+            background = null
+            setPadding(4, 0, 4, 0)
+            setOnClickListener { finish() }
+        }
+        toolbar.addView(closeButton, LinearLayout.LayoutParams(48, 52))
+
+        val toolbarId = View.generateViewId()
+        toolbar.id = toolbarId
+        root.addView(toolbar, RelativeLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, 52
+        ).apply { addRule(RelativeLayout.ALIGN_PARENT_TOP) })
+        customTabToolbar = toolbar
+
+        val webParams = webViewContainer.layoutParams as? RelativeLayout.LayoutParams
+        webParams?.let {
+            it.removeRule(RelativeLayout.BELOW)
+            it.addRule(RelativeLayout.BELOW, toolbarId)
+            webViewContainer.layoutParams = it
+        }
+    }
+
+    private fun customTabDomain(url: String?): String {
+        return try {
+            Uri.parse(url ?: "").host?.takeIf { it.isNotBlank() } ?: "DownLS10"
+        } catch (_: Exception) {
+            "DownLS10"
+        }
+    }
+
+    private fun updateCustomTabDomain(url: String?) {
+        if (!customTabMode) return
+        val root = customTabToolbar as? ViewGroup ?: return
+        val domain = root.findViewWithTag<TextView>("downls10_cct_domain") ?: return
+        domain.text = customTabDomain(url)
+    }
+
+    private fun showCustomTabMenu(anchor: View) {
+        val popup = PopupMenu(this, anchor, Gravity.START)
+        popup.menu.add("Open in DownLS10")
+        popup.menu.add("نسخ الرابط")
+        popup.menu.add("مشاركة")
+        popup.setOnMenuItemClickListener { item ->
+            when (item.title.toString()) {
+                "Open in DownLS10" -> {
+                    exitCustomTabMode()
+                    true
+                }
+                "نسخ الرابط" -> {
+                    val url = currentWebView().url.orEmpty()
+                    val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                    clipboard.setPrimaryClip(android.content.ClipData.newPlainText("URL", url))
+                    Toast.makeText(this, "تم نسخ الرابط", Toast.LENGTH_SHORT).show()
+                    true
+                }
+                "مشاركة" -> {
+                    val url = currentWebView().url.orEmpty()
+                    startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply {
+                        type = "text/plain"
+                        putExtra(Intent.EXTRA_TEXT, url)
+                    }, "مشاركة الرابط"))
+                    true
+                }
+                else -> false
+            }
+        }
+        popup.show()
+    }
+
+    private fun exitCustomTabMode() {
+        if (!customTabMode) return
+        customTabMode = false
+        customTabToolbar?.let { (it.parent as? ViewGroup)?.removeView(it) }
+        customTabToolbar = null
+        findViewById<View>(R.id.addressBar).visibility = View.VISIBLE
+        val webParams = webViewContainer.layoutParams as? RelativeLayout.LayoutParams
+        webParams?.let {
+            it.removeRule(RelativeLayout.BELOW)
+            it.addRule(RelativeLayout.BELOW, R.id.progressBar)
+            webViewContainer.layoutParams = it
+        }
+        editUrl.setText(currentWebView().url.orEmpty())
     }
 
     /**
@@ -916,6 +1054,7 @@ class BrowserActivity : Activity() {
                 persistTabs()
                 if (nightMode) applyNightModeJs(view)
                 if (isActiveTab(view)) editUrl.setText(url)
+                updateCustomTabDomain(url)
             }
 
             // أول ظهور لمحتوى الصفحة الجديدة: أسرع وقت لتطبيق الوضع الليلي
