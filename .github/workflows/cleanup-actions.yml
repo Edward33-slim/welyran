@@ -1,0 +1,31 @@
+name: Cleanup Actions Runs
+
+on:
+  workflow_dispatch:
+
+permissions:
+  actions: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete all workflow runs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -e
+          page=1
+          while true; do
+            runs=$(gh api --paginate "/repos/${{ github.repository }}/actions/runs?per_page=100&page=${page}" --jq '.workflow_runs[].id' || true)
+            if [ -z "$runs" ]; then
+              break
+            fi
+            for run_id in $runs; do
+              gh api --method DELETE "/repos/${{ github.repository }}/actions/runs/$run_id" || true
+            done
+            page=$((page + 1))
+            if [ "$page" -gt 20 ]; then
+              break
+            fi
+          done
