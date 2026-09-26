@@ -29,11 +29,23 @@ jobs:
       - name: Generate Gradle wrapper
         run: gradle wrapper --gradle-version 8.2
 
-      - name: Build debug APK
-        run: ./gradlew assembleDebug --stacktrace
+      - name: Prepare signing keystore
+        env:
+          KEYSTORE_BASE64: ${{ secrets.DOWNLS10_KEYSTORE_BASE64 }}
+        run: |
+          test -n "$KEYSTORE_BASE64"
+          echo "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/downls10-release.jks"
+
+      - name: Build signed release APK
+        env:
+          KEYSTORE_PATH: ${{ runner.temp }}/downls10-release.jks
+          KEYSTORE_PASSWORD: ${{ secrets.DOWNLS10_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.DOWNLS10_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.DOWNLS10_KEY_PASSWORD }}
+        run: ./gradlew assembleRelease --stacktrace
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: DownLS10-debug-apk
-          path: app/build/outputs/apk/debug/*.apk
+          name: DownLS10-#9-release-apk
+          path: app/build/outputs/apk/release/*.apk
