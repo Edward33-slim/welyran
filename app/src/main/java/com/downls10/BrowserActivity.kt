@@ -1518,6 +1518,13 @@ class BrowserActivity : Activity() {
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == DownloadsRepository.STORAGE_PERMISSION_REQUEST_CODE) {
+            DownloadsRepository.onStoragePermissionResult(
+                requestCode,
+                grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED
+            )
+            return
+        }
         if (requestCode != ANDROID_PERM_CODE) return
         val callback = pendingPermCallback ?: return
         pendingPermCallback = null
