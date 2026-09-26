@@ -11,8 +11,8 @@ android {
         applicationId = "com.downls10"
         minSdk = 24
         targetSdk = 34
-        versionCode = 56
-        versionName = "5.6"
+        versionCode = 57
+        versionName = "5.7"
     }
 
     signingConfigs {
@@ -53,6 +53,7 @@ dependencies {
     implementation("androidx.appcompat:appcompat:1.6.1")
     implementation("com.google.android.material:material:1.11.0")
     implementation("androidx.recyclerview:recyclerview:1.3.2")
+    implementation("androidx.browser:browser:1.8.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
 }
