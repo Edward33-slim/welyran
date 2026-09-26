@@ -7,6 +7,10 @@ android {
     namespace = "com.downls10"
     compileSdk = 34
 
+    lint {
+        disable += "ExpiredTargetSdkVersion"
+    }
+
     defaultConfig {
         applicationId = "com.downls10"
         minSdk = 24
