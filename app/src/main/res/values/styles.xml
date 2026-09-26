@@ -2,5 +2,11 @@
 <resources>
     <style name="Theme.DownLS10" parent="@android:style/Theme.DeviceDefault.NoActionBar">
         <item name="android:windowBackground">#000000</item>
+        <item name="android:colorAccent">#9E9E9E</item>
+        <item name="android:colorControlActivated">#9E9E9E</item>
+        <item name="android:colorControlHighlight">#339E9E9E</item>
+        <item name="android:colorButtonNormal">#333333</item>
+        <item name="android:navigationBarColor">#000000</item>
+        <item name="android:statusBarColor">#212121</item>
     </style>
 </resources>
