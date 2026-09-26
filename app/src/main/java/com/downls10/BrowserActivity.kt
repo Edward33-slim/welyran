@@ -179,7 +179,7 @@ class BrowserActivity : Activity() {
         if (!isCustomTabIntent(intent)) return false
 
         val knownPackage = "com.openai.chatgpt"
-        val referrerName = intent.getStringExtra(Intent.EXTRA_REFERRER_NAME).orEmpty()
+        val referrerName = intent?.getStringExtra(Intent.EXTRA_REFERRER_NAME).orEmpty()
         return referrerName.contains(knownPackage, ignoreCase = true)
     }
 
