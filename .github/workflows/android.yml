@@ -41,7 +41,7 @@ jobs:
           KEYSTORE_PATH: ${{ runner.temp }}/downls10-release.jks
           KEYSTORE_PASSWORD: ${{ secrets.DOWNLS10_KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.DOWNLS10_KEY_ALIAS }}
-          KEY_PASSWORD: ${{ secrets.DOWNLS10_KEY_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.DOWNLS10_KEYSTORE_PASSWORD }}
         run: ./gradlew assembleRelease --stacktrace
 
       - name: Upload APK
