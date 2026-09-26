@@ -99,13 +99,29 @@ object DownloadsRepository {
         suggestedFileName: String? = null,
         userAgent: String? = null,
         referer: String? = null,
-        mimeType: String? = null
+        mimeType: String? = null,
+        skipStoragePermission: Boolean = false
     ) {
         val appContext = context.applicationContext
         trackActivities(context)
         ensureLoaded(appContext)
+
+        if (!skipStoragePermission && !ensureStoragePermissionForAndroid10(context, action = {
+                startNewDownload(
+                    context = context,
+                    url = url,
+                    showToast = showToast,
+                    suggestedFileName = suggestedFileName,
+                    userAgent = userAgent,
+                    referer = referer,
+                    mimeType = mimeType,
+                    skipStoragePermission = true
+                )
+            })) {
+            return
+        }
+
         requestNotificationPermissionOnce(context)
-        requestStoragePermissionForAndroid10(context)
         var typed = url.trim()
         if (typed.isEmpty()) return
 
@@ -217,15 +233,51 @@ object DownloadsRepository {
     private var askedNotificationPermission = false
     private var askedStoragePermission = false
 
-    /** Android 10: نكتب مباشرة داخل DownloadLS10 باستخدام legacy external storage. */
-    private fun requestStoragePermissionForAndroid10(context: Context) {
-        if (askedStoragePermission || Build.VERSION.SDK_INT != Build.VERSION_CODES.Q || context !is Activity) return
-        askedStoragePermission = true
-        try {
-            if (context.checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
-                context.requestPermissions(arrayOf(Manifest.permission.WRITE_EXTERNAL_STORAGE), 7302)
+    /** طلب إذن التخزين على Android 10 قبل بدء أي كتابة، ثم متابعة نفس التنزيل بعد الموافقة. */
+    const val STORAGE_PERMISSION_REQUEST_CODE = 7302
+    private var pendingStorageAction: (() -> Unit)? = null
+
+    private fun ensureStoragePermissionForAndroid10(
+        context: Context,
+        action: () -> Unit
+    ): Boolean {
+        if (Build.VERSION.SDK_INT != Build.VERSION_CODES.Q) return true
+        if (context.checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED) {
+            return true
+        }
+        if (context !is Activity) {
+            toast(context.applicationContext, "يجب السماح للتطبيق بالوصول إلى الملفات حتى يبدأ التنزيل")
+            return false
+        }
+
+        pendingStorageAction = action
+        if (!askedStoragePermission) {
+            askedStoragePermission = true
+            try {
+                context.requestPermissions(
+                    arrayOf(Manifest.permission.WRITE_EXTERNAL_STORAGE),
+                    STORAGE_PERMISSION_REQUEST_CODE
+                )
+            } catch (_: Exception) {
+                pendingStorageAction = null
+                toast(context.applicationContext, "تعذّر طلب إذن التخزين")
+                return false
             }
-        } catch (_: Exception) { }
+        }
+        return false
+    }
+
+    /** تستدعيها الـ Activity بعد نتيجة إذن التخزين؛ لا يبدأ التنزيل قبل منح الإذن. */
+    fun onStoragePermissionResult(requestCode: Int, granted: Boolean) {
+        if (requestCode != STORAGE_PERMISSION_REQUEST_CODE) return
+        val action = pendingStorageAction
+        pendingStorageAction = null
+        if (granted) {
+            mainHandler.post { action?.invoke() }
+        } else {
+            askedStoragePermission = false
+            topActivity?.get()?.let { toast(it.applicationContext, "تم رفض إذن التخزين، لذلك لم يبدأ التنزيل") }
+        }
     }
 
     /** من أندرويد 13 يلزم إذن الإشعارات ليظهر إشعار التنزيل: نطلبه مرة واحدة. */
@@ -617,7 +669,14 @@ object DownloadsRepository {
             )
         } else {
             val saveDir = Environment.getExternalStoragePublicDirectory(DOWNLOAD_DIRECTORY_NAME)
-            if (!saveDir.exists()) saveDir.mkdirs()
+            if (!saveDir.exists() && !saveDir.mkdirs()) {
+                item.speed = "0 KB/s"
+                item.status = "فشل: تعذّر إنشاء مجلد DownloadLS10"
+                item.state = DownloadState.ERROR
+                toast(appContext, "فشل: تعذّر إنشاء مجلد DownloadLS10")
+                runCatching { notifyChanged(appContext, forceSave = true) }
+                return
+            }
             downloadEngine.downloadFile(
                 item = item,
                 saveDir = saveDir,
