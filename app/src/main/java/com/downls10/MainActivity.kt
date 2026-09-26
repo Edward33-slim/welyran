@@ -6,6 +6,7 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.graphics.Color
 import android.os.Bundle
 import android.app.role.RoleManager
@@ -57,6 +58,16 @@ class MainActivity : Activity() {
             startActivity(browserIntent)
         }
         btnMenu.setOnClickListener { showOptionsMenu() }
+    }
+
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == DownloadsRepository.STORAGE_PERMISSION_REQUEST_CODE) {
+            DownloadsRepository.onStoragePermissionResult(
+                requestCode,
+                grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED
+            )
+        }
     }
 
     override fun onResume() {
