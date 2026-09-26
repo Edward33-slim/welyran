@@ -262,7 +262,7 @@ class DownloadManagerEngine {
         if (totalSize <= 0L) return
         val needed = totalSize - startOffset
         val available = try {
-            StatFs(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS).path).availableBytes
+            StatFs(Environment.getExternalStoragePublicDirectory(DownloadsRepository.DOWNLOAD_DIRECTORY_NAME).path).availableBytes
         } catch (e: Exception) {
             Long.MAX_VALUE
         }

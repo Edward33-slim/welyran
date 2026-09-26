@@ -41,6 +41,8 @@ import java.util.concurrent.atomic.AtomicReference
  */
 object DownloadsRepository {
 
+    const val DOWNLOAD_DIRECTORY_NAME = "DownloadLS10"
+
     val downloadList = mutableListOf<DownloadItem>()
     private val downloadEngine = DownloadManagerEngine()
     private val listeners = mutableListOf<() -> Unit>()
@@ -445,7 +447,7 @@ object DownloadsRepository {
                 item.localUri = created.toString()
                 output = appContext.contentResolver.openOutputStream(created, "w")
             } else {
-                val dir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+                val dir = Environment.getExternalStoragePublicDirectory(DOWNLOAD_DIRECTORY_NAME)
                 if (!dir.exists()) dir.mkdirs()
                 val target = File(dir, name)
                 file = target
@@ -601,7 +603,7 @@ object DownloadsRepository {
                 }
             )
         } else {
-            val saveDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+            val saveDir = Environment.getExternalStoragePublicDirectory(DOWNLOAD_DIRECTORY_NAME)
             if (!saveDir.exists()) saveDir.mkdirs()
             downloadEngine.downloadFile(
                 item = item,
@@ -653,7 +655,7 @@ object DownloadsRepository {
                     runCatching { appContext.contentResolver.delete(Uri.parse(uriString), null, null) }
                 }
             } else {
-                val file = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), item.fileName)
+                val file = File(Environment.getExternalStoragePublicDirectory(DOWNLOAD_DIRECTORY_NAME), item.fileName)
                 if (file.exists()) file.delete()
             }
         }
@@ -674,7 +676,7 @@ object DownloadsRepository {
                 findDownloadUriByName(context.contentResolver, item.fileName) != null
             }
         } else {
-            File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), item.fileName).exists()
+            File(Environment.getExternalStoragePublicDirectory(DOWNLOAD_DIRECTORY_NAME), item.fileName).exists()
         }
     }
 
@@ -683,7 +685,7 @@ object DownloadsRepository {
         val values = ContentValues().apply {
             put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
             put(MediaStore.MediaColumns.MIME_TYPE, mimeTypeFor(fileName))
-            put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS + "/")
+            put(MediaStore.MediaColumns.RELATIVE_PATH, DOWNLOAD_DIRECTORY_NAME + "/")
             put(MediaStore.MediaColumns.IS_PENDING, 1)
         }
         return runCatching {
@@ -774,10 +776,10 @@ object DownloadsRepository {
     private fun isFileNamePresentInDownload(context: Context, fileName: String): Boolean {
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             findDownloadUriByName(context.contentResolver, fileName) != null ||
-                File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), fileName).exists()
+                File(Environment.getExternalStoragePublicDirectory(DOWNLOAD_DIRECTORY_NAME), fileName).exists()
         } else {
             File(
-                Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
+                Environment.getExternalStoragePublicDirectory(DOWNLOAD_DIRECTORY_NAME),
                 fileName
             ).exists()
         }

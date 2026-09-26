@@ -1760,12 +1760,13 @@ class BrowserActivity : Activity() {
     }
 
     private fun exportBookmarks(onFinished: () -> Unit) {
-        pendingBookmarkExportContent = BrowserStorage.buildBookmarksHtml(this)
-        try {
-            BookmarksFileManager.startExport(this, pendingBookmarkExportContent!!)
-        } catch (e: Exception) {
+        val content = BrowserStorage.buildBookmarksHtml(this)
+        val result = BookmarksFileManager.startExport(this, content)
+        if (result.first) {
             pendingBookmarkExportContent = null
-            Toast.makeText(this, "فشل فتح حفظ العلامات: ${e.message ?: "غير معروف"}", Toast.LENGTH_LONG).show()
+            Toast.makeText(this, "تم حفظ العلامات المرجعية داخل DownloadLS10", Toast.LENGTH_SHORT).show()
+        } else {
+            Toast.makeText(this, "فشل حفظ العلامات: ${result.second}", Toast.LENGTH_LONG).show()
         }
         onFinished()
     }
