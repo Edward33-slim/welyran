@@ -1,6 +1,8 @@
 name: Extract and Build DownLS10
 
 on:
+  push:
+    branches: [ main ]
   workflow_dispatch:
 
 permissions:
@@ -11,6 +13,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       commit_sha: ${{ steps.commit.outputs.sha }}
+      changed: ${{ steps.commit.outputs.changed }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -22,6 +25,10 @@ jobs:
         run: |
           set -euxo pipefail
 
+          if [ ! -f DownLS10-modified-code.zip ]; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           test -f DownLS10-modified-code.zip
           rm -rf "$RUNNER_TEMP/downls10-source"
           mkdir -p "$RUNNER_TEMP/downls10-source"
@@ -70,15 +77,18 @@ jobs:
 
           if git diff --cached --quiet; then
             echo "No changes to commit."
+            echo "changed=false" >> "$GITHUB_OUTPUT"
             echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
           else
             git commit -m "Extract DownLS10 modified source"
             git push origin HEAD:main
+            echo "changed=true" >> "$GITHUB_OUTPUT"
             echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
           fi
 
   build:
     needs: extract
+    if: needs.extract.outputs.changed == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout extracted source
