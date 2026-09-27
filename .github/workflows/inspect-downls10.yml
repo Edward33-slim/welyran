@@ -10,10 +10,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Inspect repository
+      - name: Inspect executeDownload
         run: |
           rm -rf project
           mkdir project
           unzip -q DownLS10.zip -d project
-          echo "=== DownloadsRepository.kt ==="
-          sed -n '1,420p' project/src/main/java/com/downls10/DownloadsRepository.kt
+          f=project/src/main/java/com/downls10/DownloadsRepository.kt
+          grep -n -E 'executeDownload|pauseDownload|resumeDownload|downloadEngine' "$f"
+          echo "=== executeDownload area ==="
+          n=$(grep -n 'private fun executeDownload' "$f" | cut -d: -f1)
+          sed -n "$((n-20)),$((n+180))p" "$f"
