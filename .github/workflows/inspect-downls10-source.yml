@@ -23,3 +23,8 @@ jobs:
           find project -type f | sort
           echo "=== COLOR/LINK REFERENCES ==="
           grep -RniE 'purple|violet|skyblue|lightblue|linkColor|textColor|setTextColor|visited|visitedUrls|WebView|Search' project/src/main --include='*.kt' --include='*.java' --include='*.xml' || true
+          echo "=== BROWSER VISITED JS ==="
+          sed -n '1340,1440p' project/src/main/java/com/downls10/BrowserActivity.kt
+          echo "=== VISITED SITES FILE ==="
+          find project/src/main -type f -name '*Visited*' -o -name '*History*' | sort
+          for f in $(find project/src/main -type f | grep -E 'Visited|History'); do echo "### $f"; sed -n '1,260p' "$f"; done
