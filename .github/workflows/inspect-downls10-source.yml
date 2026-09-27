@@ -1,0 +1,25 @@
+name: Inspect DownLS10 Source
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Inspect ZIP source
+        run: |
+          set -euxo pipefail
+          rm -rf project
+          mkdir project
+          unzip -q DownLS10.zip -d project
+          echo "=== FILES ==="
+          find project -type f | sort
+          echo "=== COLOR/LINK REFERENCES ==="
+          grep -RniE 'purple|violet|skyblue|lightblue|linkColor|textColor|setTextColor|visited|visitedUrls|WebView|Search' project/src/main --include='*.kt' --include='*.java' --include='*.xml' || true
