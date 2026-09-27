@@ -180,7 +180,7 @@ jobs:
     }'''
           replace_once(engine, old_executor, new_executor)
 
-          # Repack with the same module-root structure.
+          # Repack with the same module-root structure; only the requested download setting is changed.
           with zipfile.ZipFile("patched.zip", "w", zipfile.ZIP_DEFLATED) as z:
               for p in Path("project").rglob("*"):
                   if p.is_file():
