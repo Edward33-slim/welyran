@@ -14,195 +14,26 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Patch DownLS10 source inside ZIP
+      - name: Patch source ZIP
         run: |
           set -eux
-          rm -rf project patched.zip
+          rm -rf project patched.zip verify
           mkdir project
           unzip -q DownLS10.zip -d project
-
-          python3 <<'PY'
-          from pathlib import Path
-          import zipfile
-          import shutil
-
-          root = Path("project/src/main/java/com/downls10")
-
-          def replace_once(path, old, new):
-              p = Path(path)
-              s = p.read_text(encoding="utf-8")
-              if old not in s:
-                  raise SystemExit(f"Expected text not found in {p}")
-              if s.count(old) != 1:
-                  raise SystemExit(f"Expected exactly one match in {p}, found {s.count(old)}")
-              p.write_text(s.replace(old, new), encoding="utf-8")
-
-          main = root / "MainActivity.kt"
-          old_main = '''    private fun showOptionsMenu() {
-        val options = arrayOf(
-            if (showSpeed) "إخفاء سرعة التنزيل" else "إظهار سرعة التنزيل",
-            "السجل (History)"
-        )
-
-        AlertDialog.Builder(this)
-            .setTitle("الخيارات")
-            .setItems(options) { _, which ->
-                when (which) {
-                    0 -> {
-                        showSpeed = !showSpeed
-                        mainPrefs().edit().putBoolean("showSpeed", showSpeed).apply()
-                        adapter.setShowSpeed(showSpeed)
-                    }
-                    1 -> showHistoryDialog()
-                }
-            }
-            .show()
-    }
-'''
-          new_main = '''    private fun showOptionsMenu() {
-        val options = arrayOf(
-            if (showSpeed) "إخفاء سرعة التنزيل" else "إظهار سرعة التنزيل",
-            "التنزيلات المتزامنة",
-            "السجل (History)"
-        )
-
-        AlertDialog.Builder(this)
-            .setTitle("الخيارات")
-            .setItems(options) { _, which ->
-                when (which) {
-                    0 -> {
-                        showSpeed = !showSpeed
-                        mainPrefs().edit().putBoolean("showSpeed", showSpeed).apply()
-                        adapter.setShowSpeed(showSpeed)
-                    }
-                    1 -> showConcurrentDownloadsDialog()
-                    2 -> showHistoryDialog()
-                }
-            }
-            .show()
-    }
-
-    private fun showConcurrentDownloadsDialog() {
-        val values = (1..10).toList()
-        val current = DownloadsRepository.getMaxConcurrentDownloads(this)
-
-        AlertDialog.Builder(this)
-            .setTitle("التنزيلات المتزامنة")
-            .setSingleChoiceItems(
-                values.map { it.toString() }.toTypedArray(),
-                current - 1
-            ) { dialog, which ->
-                DownloadsRepository.setMaxConcurrentDownloads(this, values[which])
-                dialog.dismiss()
-            }
-            .setNegativeButton("إلغاء", null)
-            .show()
-    }
-'''
-          replace_once(main, old_main, new_main)
-
-          repo = root / "DownloadsRepository.kt"
-          old_repo = '''    private var initialized = false
-    private var lastSaveTime = 0L
-    private const val SAVE_THROTTLE_MS = 1500L
-
-    fun ensureLoaded(context: Context) {
-        if (initialized) return
-        initialized = true
-        downloadList.clear()
-        downloadList.addAll(DownloadPersistence.load(context.applicationContext))
-    }
-'''
-          new_repo = '''    private var initialized = false
-    private var lastSaveTime = 0L
-    private const val SAVE_THROTTLE_MS = 1500L
-    private const val DEFAULT_CONCURRENT_DOWNLOADS = 8
-
-    fun ensureLoaded(context: Context) {
-        val prefs = context.applicationContext.getSharedPreferences("main_prefs", Context.MODE_PRIVATE)
-        val concurrency = prefs.getInt("download_concurrency", DEFAULT_CONCURRENT_DOWNLOADS).coerceIn(1, 10)
-        downloadEngine.setMaxConcurrentDownloads(concurrency)
-
-        if (initialized) return
-        initialized = true
-        downloadList.clear()
-        downloadList.addAll(DownloadPersistence.load(context.applicationContext))
-    }
-
-    fun getMaxConcurrentDownloads(context: Context): Int {
-        return context.applicationContext
-            .getSharedPreferences("main_prefs", Context.MODE_PRIVATE)
-            .getInt("download_concurrency", DEFAULT_CONCURRENT_DOWNLOADS)
-            .coerceIn(1, 10)
-    }
-
-    fun setMaxConcurrentDownloads(context: Context, count: Int) {
-        val value = count.coerceIn(1, 10)
-        context.applicationContext
-            .getSharedPreferences("main_prefs", Context.MODE_PRIVATE)
-            .edit()
-            .putInt("download_concurrency", value)
-            .apply()
-        downloadEngine.setMaxConcurrentDownloads(value)
-    }
-'''
-          replace_once(repo, old_repo, new_repo)
-
-          engine = root / "DownloadManagerEngine.kt"
-          replace_once(
-              engine,
-              'import java.util.concurrent.Executors',
-              '''import java.util.concurrent.LinkedBlockingQueue
-          import java.util.concurrent.ThreadPoolExecutor
-          import java.util.concurrent.TimeUnit'''
-          )
-          old_executor = '    private val executor = Executors.newFixedThreadPool(8)'
-          new_executor = '''    private val executor = ThreadPoolExecutor(
-        8,
-        8,
-        0L,
-        TimeUnit.MILLISECONDS,
-        LinkedBlockingQueue()
-    )
-
-    fun setMaxConcurrentDownloads(count: Int) {
-        val value = count.coerceIn(1, 10)
-        synchronized(executor) {
-            if (value > executor.corePoolSize) {
-                executor.maximumPoolSize = value
-                executor.corePoolSize = value
-            } else {
-                executor.corePoolSize = value
-                executor.maximumPoolSize = value
-            }
-            executor.prestartAllCoreThreads()
-        }
-    }'''
-          replace_once(engine, old_executor, new_executor)
-
-          # Repack with the same module-root structure; only the requested download setting is changed.
-          with zipfile.ZipFile("patched.zip", "w", zipfile.ZIP_DEFLATED) as z:
-              for p in Path("project").rglob("*"):
-                  if p.is_file():
-                      z.write(p, p.relative_to("project").as_posix())
-          PY
-
+          python3 tools/patch_concurrent_downloads.py
           mv patched.zip DownLS10.zip
 
-          echo "===== VERIFY PATCH ====="
-          rm -rf verify
           mkdir verify
           unzip -q DownLS10.zip -d verify
           grep -n "التنزيلات المتزامنة" verify/src/main/java/com/downls10/MainActivity.kt
           grep -n "setMaxConcurrentDownloads" verify/src/main/java/com/downls10/DownloadsRepository.kt
           grep -n "ThreadPoolExecutor" verify/src/main/java/com/downls10/DownloadManagerEngine.kt
 
-      - name: Commit patched source ZIP
+      - name: Commit patched ZIP
         run: |
           set -eux
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add DownLS10.zip
-          git diff --cached --stat
           git commit -m "Add configurable concurrent downloads to DownLS10"
           git push
