@@ -210,3 +210,5 @@ jobs:
           name: DownLS10-release-apk-v10.1
           path: ${{ runner.temp }}/DownLS10-release.apk
           if-no-files-found: error
+
+# Trigger build workflow after source-color patch definition
