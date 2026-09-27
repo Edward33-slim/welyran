@@ -1,0 +1,28 @@
+name: Inspect DownLS10 source
+
+on:
+  push:
+    paths:
+      - '.github/workflows/inspect-downls10.yml'
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Extract and inspect
+        run: |
+          rm -rf project
+          mkdir project
+          unzip -q DownLS10.zip -d project
+          echo "=== Kotlin files ==="
+          find project/src/main/java -type f -name '*.kt' -print
+          echo "=== MainActivity.kt ==="
+          sed -n '1,260p' project/src/main/java/com/downls10/MainActivity.kt || true
+          echo "=== DownloadManagerEngine.kt ==="
+          sed -n '1,360p' project/src/main/java/com/downls10/DownloadManagerEngine.kt || true
+          echo "=== DownloadService.kt ==="
+          sed -n '1,320p' project/src/main/java/com/downls10/DownloadService.kt || true
+          echo "=== activity_main.xml ==="
+          sed -n '1,300p' project/src/main/res/layout/activity_main.xml || true
