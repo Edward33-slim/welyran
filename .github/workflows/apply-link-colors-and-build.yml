@@ -1,0 +1,212 @@
+name: Apply DownLS10 Link Colors and Build
+
+on:
+  push:
+    branches: [ main ]
+    paths-ignore:
+      - 'DownLS10.zip'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Patch source and update ZIP
+        run: |
+          set -euxo pipefail
+          rm -rf project
+          mkdir project
+          unzip -q DownLS10.zip -d project
+          test -f project/src/main/java/com/downls10/BrowserActivity.kt
+
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("project/src/main/java/com/downls10/BrowserActivity.kt")
+          s = p.read_text(encoding="utf-8")
+
+          old_css = 'color: #B388FF !important; -webkit-text-fill-color: #B388FF !important;'
+          new_css = 'color: #800080 !important; -webkit-text-fill-color: #800080 !important;'
+          if old_css not in s:
+              raise SystemExit("Expected visited-link CSS was not found")
+          s = s.replace(old_css, new_css, 1)
+
+          old_color = "if (info.host !== pageHost) a.style.color = '#00FFFF';"
+          new_color = "if (isSearchPage()) a.style.color = '#87CEEB';"
+          if old_color not in s:
+              raise SystemExit("Expected unvisited-link color line was not found")
+          s = s.replace(old_color, new_color, 1)
+
+          anchor = "                function markLink(a) {"
+          helper = """                function isSearchPage() {
+                      return /(^|\\.)google\\.[a-z.]+$/.test(pageHost) ||
+                             /(^|\\.)bing\\.com$/.test(pageHost) ||
+                             /(^|\\.)search\\.yahoo\\.com$/.test(pageHost) ||
+                             /(^|\\.)duckduckgo\\.com$/.test(pageHost) ||
+                             /(^|\\.)yandex\\.[a-z.]+$/.test(pageHost) ||
+                             /(^|\\.)search\\.brave\\.com$/.test(pageHost);
+                  }
+"""
+          if helper.strip() not in s:
+              if anchor not in s:
+                  raise SystemExit("Search-result insertion point was not found")
+              s = s.replace(anchor, helper + anchor, 1)
+
+          old_fn = """    private fun visitedSiteColor(url: String?, unvisitedColor: Int = Color.parseColor("#00FFFF")): Int {
+          return if (isVisitedSite(url)) Color.parseColor("#B388FF") else unvisitedColor
+      }"""
+          new_fn = """    private fun visitedSiteColor(url: String?, unvisitedColor: Int = Color.GRAY): Int {
+          // عناصر واجهة المتصفح نفسها تبقى رمادية؛ ألوان الروابط داخل صفحات المواقع
+          // تُدار في applyVisitedLinksJs حتى لا نفرض لوناً على تصميم الموقع الأصلي.
+          return Color.GRAY
+      }"""
+          if old_fn not in s:
+              raise SystemExit("Browser UI color helper was not found")
+          s = s.replace(old_fn, new_fn, 1)
+
+          p.write_text(s, encoding="utf-8")
+          PY
+
+          echo "=== PATCH VERIFICATION ==="
+          grep -nE '#800080|#87CEEB|isSearchPage|return Color.GRAY' project/src/main/java/com/downls10/BrowserActivity.kt
+
+          rm -f DownLS10.zip
+          (cd project && zip -qr ../DownLS10.zip .)
+          test -s DownLS10.zip
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add DownLS10.zip
+          git diff --cached --quiet && echo "ZIP unchanged" || git commit -m "Update DownLS10 visited and unvisited link colors [skip ci]"
+          git push
+
+      - name: Prepare Android project
+        run: |
+          set -euxo pipefail
+          rm -rf build-project
+          mkdir build-project
+          unzip -q DownLS10.zip -d build-project
+          test -f build-project/build.gradle.kts
+          test -d build-project/src/main
+          mkdir -p build-project/app
+          mv build-project/build.gradle.kts build-project/app/build.gradle.kts
+          mv build-project/src build-project/app/src
+          if [ -f build-project/proguard-rules.pro ]; then mv build-project/proguard-rules.pro build-project/app/proguard-rules.pro; fi
+
+          cat > build-project/settings.gradle.kts <<'EOF'
+          pluginManagement {
+              repositories {
+                  google()
+                  mavenCentral()
+                  gradlePluginPortal()
+              }
+          }
+          dependencyResolutionManagement {
+              repositoriesMode.set(RepositoriesMode.PREFER_SETTINGS)
+              repositories {
+                  google()
+                  mavenCentral()
+              }
+          }
+          rootProject.name = "DownLS10"
+          include(":app")
+          EOF
+
+          cat > build-project/build.gradle.kts <<'EOF'
+          plugins {
+              id("com.android.application") version "8.7.3" apply false
+              id("org.jetbrains.kotlin.android") version "2.0.21" apply false
+          }
+          EOF
+
+          cat > build-project/gradle.properties <<'EOF'
+          android.useAndroidX=true
+          android.enableJetifier=true
+          org.gradle.jvmargs=-Xmx4g -Dfile.encoding=UTF-8
+          EOF
+
+          cat > build-project/app/build.gradle.kts <<'EOF'
+          plugins {
+              id("com.android.application")
+              id("org.jetbrains.kotlin.android")
+          }
+          android {
+              namespace = "com.downls10"
+              compileSdk = 35
+              defaultConfig {
+                  applicationId = "com.downls10"
+                  minSdk = 24
+                  targetSdk = 35
+                  versionCode = 12
+                  versionName = "10.1"
+              }
+              buildTypes {
+                  release {
+                      isMinifyEnabled = false
+                      proguardFiles(
+                          getDefaultProguardFile("proguard-android-optimize.txt"),
+                          "proguard-rules.pro"
+                      )
+                  }
+              }
+              compileOptions {
+                  sourceCompatibility = JavaVersion.VERSION_17
+                  targetCompatibility = JavaVersion.VERSION_17
+              }
+              kotlinOptions { jvmTarget = "17" }
+          }
+          dependencies {
+              implementation("androidx.core:core-ktx:1.15.0")
+              implementation("androidx.appcompat:appcompat:1.7.0")
+              implementation("androidx.activity:activity-ktx:1.10.1")
+              implementation("androidx.webkit:webkit:1.12.1")
+              implementation("androidx.recyclerview:recyclerview:1.3.2")
+              implementation("com.google.android.material:material:1.11.0")
+              implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
+              implementation("com.squareup.okhttp3:okhttp:4.12.0")
+          }
+          EOF
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Build release APK
+        working-directory: build-project
+        run: |
+          set -eux
+          gradle wrapper --gradle-version 8.9
+          ./gradlew :app:assembleRelease --stacktrace
+
+      - name: Sign with existing DownLS10 key
+        env:
+          KEYSTORE_BASE64: ${{ secrets.DOWNLS10_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.DOWNLS10_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.DOWNLS10_KEY_ALIAS }}
+        run: |
+          set -eux
+          test -n "$KEYSTORE_BASE64"
+          test -n "$KEYSTORE_PASSWORD"
+          test -n "$KEY_ALIAS"
+          echo "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/downls10-release.jks"
+          APK="$(find build-project -type f -path '*/build/outputs/apk/release/*.apk' -print -quit)"
+          test -n "$APK"
+          BT="$(ls -1 "$ANDROID_HOME/build-tools" | sort -V | tail -1)"
+          "$ANDROID_HOME/build-tools/$BT/zipalign" -f 4 "$APK" "$RUNNER_TEMP/aligned.apk"
+          "$ANDROID_HOME/build-tools/$BT/apksigner" sign --ks "$RUNNER_TEMP/downls10-release.jks" --ks-key-alias "$KEY_ALIAS" --ks-pass pass:"$KEYSTORE_PASSWORD" --out "$RUNNER_TEMP/DownLS10-release.apk" "$RUNNER_TEMP/aligned.apk"
+          "$ANDROID_HOME/build-tools/$BT/apksigner" verify "$RUNNER_TEMP/DownLS10-release.apk"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: DownLS10-release-apk-v10.1
+          path: ${{ runner.temp }}/DownLS10-release.apk
+          if-no-files-found: error
