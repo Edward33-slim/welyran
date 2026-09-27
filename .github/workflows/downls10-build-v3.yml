@@ -121,6 +121,7 @@ jobs:
         with:
           gradle-version: '8.9'
 
+      # Build the requested app modification with the existing signing key.
       - name: Build
         working-directory: project
         run: |
