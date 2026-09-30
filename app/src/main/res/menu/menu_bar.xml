@@ -70,22 +70,6 @@
                 android:icon="@drawable/ic_apply_menu"
                 android:title=""
                 app:showAsAction="always|withText" />
-            <item
-                android:id="@+id/menu_log"
-                android:icon="@drawable/ic_log"
-                android:title="@string/show_log"
-                app:showAsAction="always" />
-            <item
-                android:id="@+id/menu_rules"
-                android:icon="@drawable/ic_rules"
-                android:title="@string/showrules"
-                app:showAsAction="always" />
-
-            <item
-                android:id="@+id/menu_setcustom"
-                android:icon="@drawable/ic_script"
-                android:title="@string/set_custom_script"
-                app:showAsAction="always" />
 
             <!--<item
                 android:id="@+id/menu_customrules"
@@ -97,26 +81,6 @@
                 android:id="@+id/menu_preference"
                 android:icon="@drawable/ic_preference"
                 android:title="@string/preferences"
-                app:showAsAction="always" />
-            <item
-                android:id="@+id/menu_export"
-                android:icon="@drawable/ic_export"
-                android:title="@string/exports"
-                app:showAsAction="always" />
-            <item
-                android:id="@+id/menu_import"
-                android:icon="@drawable/ic_import"
-                android:title="@string/imports"
-                app:showAsAction="always" />
-            <item
-                android:id="@+id/menu_help"
-                android:icon="@drawable/ic_help"
-                android:title="@string/help"
-                app:showAsAction="always" />
-            <item
-                android:id="@+id/menu_exit"
-                android:icon="@drawable/ic_exit"
-                android:title="@string/exit"
                 app:showAsAction="always" />
         </menu>
     </item>
