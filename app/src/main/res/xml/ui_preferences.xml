@@ -10,23 +10,6 @@
             android:summaryOff="@string/notify_pref_summary_off"
             android:summaryOn="@string/notify_pref_summary_on"
             android:title="@string/notify_pref_title" />
-
-        <Preference
-            android:layout_width="wrap_content"
-            android:key="default_behavior_allow_mode"
-            android:title="@string/default_connection_setting_allow"></Preference>
-
-
-        <Preference
-            android:key="default_behavior_block_mode"
-            android:title="@string/default_connection_setting_block"></Preference>
-
-        <CheckBoxPreference
-            android:defaultValue="false"
-            android:key="disableIcons"
-            android:summaryOff="@string/hideicons_pref_summary_off"
-            android:summaryOn="@string/hideicons_pref_summary_on"
-            android:title="@string/hideicons_pref_title" />
         <!--<CheckBoxPreference
             android:defaultValue="true"
             android:key="activeNotification"
@@ -60,11 +43,6 @@
             android:summaryOff="@string/show_package_name_summary_off"
             android:summaryOn="@string/show_package_name_summary_on"
             android:title="@string/show_package_name" />
-
-        <CheckBoxPreference
-            android:key="enableConfirm"
-            android:summary="@string/enableConfirm_summary_on"
-            android:title="@string/enableConfirmTitle" />
 
     </PreferenceCategory>
 </PreferenceScreen>
