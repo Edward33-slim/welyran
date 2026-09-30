@@ -39,8 +39,13 @@ public class NetworkChangeDebouncer {
     
     // Maximum retry attempts
     private static final int MAX_RETRY_ATTEMPTS = 10;
+
+    // Persist the fact that Wi-Fi went down while the firewall was enabled.
+    // This survives a service/process restart while Wi-Fi is still disconnected.
+    private static final String WIFI_RECONNECT_PREFS = "wifi_reconnect_state";
+    private static final String PREF_WIFI_DISCONNECTED = "wifi_disconnected";
+    private static final String PREF_FIREWALL_WAS_ENABLED = "firewall_was_enabled";
     
-    // 
     // Handler for posting delayed tasks
     private static final Handler handler = new Handler(Looper.getMainLooper());
     
@@ -64,6 +69,97 @@ public class NetworkChangeDebouncer {
     
     // Counter for tracking how many changes were coalesced
     private static volatile int coalescedCount = 0;
+
+    /**
+     * Remember that Wi-Fi disconnected while the firewall was enabled.
+     */
+    public static void markWifiDisconnected(Context context) {
+        if (context == null) {
+            return;
+        }
+        Context app = context.getApplicationContext();
+        android.content.SharedPreferences prefs = app.getSharedPreferences(
+                WIFI_RECONNECT_PREFS, Context.MODE_PRIVATE);
+        boolean firewallEnabled = Api.isEnabled(app);
+        prefs.edit()
+                .putBoolean(PREF_WIFI_DISCONNECTED, true)
+                .putBoolean(PREF_FIREWALL_WAS_ENABLED, firewallEnabled)
+                .apply();
+        Log.i(TAG, "Wi-Fi disconnected; firewall was enabled: " + firewallEnabled);
+    }
+
+    /**
+     * Called when Wi-Fi becomes connected again. Returns true only when this is a
+     * reconnect that was preceded by a Wi-Fi disconnect while the firewall was enabled.
+     */
+    public static boolean handleWifiConnected(Context context) {
+        if (context == null) {
+            return false;
+        }
+        final Context app = context.getApplicationContext();
+        android.content.SharedPreferences prefs = app.getSharedPreferences(
+                WIFI_RECONNECT_PREFS, Context.MODE_PRIVATE);
+        boolean wasDisconnected = prefs.getBoolean(PREF_WIFI_DISCONNECTED, false);
+        boolean firewallWasEnabled = prefs.getBoolean(PREF_FIREWALL_WAS_ENABLED, false);
+
+        if (!wasDisconnected || !firewallWasEnabled || !Api.isEnabled(app)) {
+            // Do not leave stale state behind if the firewall was manually disabled.
+            if (!Api.isEnabled(app)) {
+                prefs.edit().clear().apply();
+            }
+            return false;
+        }
+
+        // Consume the reconnect marker before scheduling so duplicate connectivity
+        // broadcasts cannot trigger two disable/enable cycles.
+        prefs.edit().clear().apply();
+        cancelPendingJob();
+
+        final long debounceDelay = getDebounceDelay();
+        Log.i(TAG, "Wi-Fi reconnect detected; firewall reset scheduled in " + debounceDelay + "ms");
+        handler.postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                runWifiReconnectCycle(app);
+            }
+        }, debounceDelay);
+        return true;
+    }
+
+    /**
+     * Disable the firewall first and only after the disable operation reports success
+     * enable it again. FirewallActions invokes its callback after the root operation
+     * has completed, so enable cannot start before disable has finished.
+     */
+    private static void runWifiReconnectCycle(final Context context) {
+        if (!Api.isEnabled(context)) {
+            Log.d(TAG, "Wi-Fi reconnect firewall reset skipped: firewall is already disabled");
+            return;
+        }
+
+        Log.i(TAG, "Wi-Fi reconnect: disabling firewall before re-enabling it");
+        FirewallActions.setEnabled(context, false, false, new FirewallActions.Done() {
+            @Override
+            public void done(boolean disabledSuccessfully) {
+                if (!disabledSuccessfully) {
+                    Log.e(TAG, "Wi-Fi reconnect: firewall disable failed; not enabling it again");
+                    return;
+                }
+
+                Log.i(TAG, "Wi-Fi reconnect: firewall disable completed; enabling firewall now");
+                FirewallActions.setEnabled(context, true, false, new FirewallActions.Done() {
+                    @Override
+                    public void done(boolean enabledSuccessfully) {
+                        if (enabledSuccessfully) {
+                            Log.i(TAG, "Wi-Fi reconnect: firewall re-enabled successfully");
+                        } else {
+                            Log.e(TAG, "Wi-Fi reconnect: firewall re-enable failed");
+                        }
+                    }
+                });
+            }
+        });
+    }
 
     /**
      * Schedule a network change to be processed after the debounce delay.
