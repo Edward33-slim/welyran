@@ -7,9 +7,9 @@
     -->
 
     <!-- main -->
-    <string name="app_name">AFWall+ </string>
+    <string name="app_name">SkipWi</string>
     <string name="app_name_donate">AFWall+ (Donate)</string>
-    <string name="title_disabled">AFWall+ (DISABLED)</string>
+    <string name="title_disabled">SkipWi (DISABLED)</string>
     <string name="whitelist_array_item">Allow selected</string>
     <string name="blacklist_array_item">Block selected</string>
     <string name="showrules">Show rules</string>
