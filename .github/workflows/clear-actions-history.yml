@@ -1,0 +1,45 @@
+name: Clear Actions History
+
+on:
+  workflow_dispatch:
+
+permissions:
+  actions: write
+
+jobs:
+  clear-actions-history:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete all workflow runs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -e
+
+          echo "Deleting all workflow runs except the current run..."
+
+          while true; do
+            RUN_IDS="$(gh api --paginate \
+              -H "Accept: application/vnd.github+json" \
+              "/repos/${GITHUB_REPOSITORY}/actions/runs?per_page=100" \
+              --jq '.workflow_runs[].id' | grep -v "^${GITHUB_RUN_ID}$" || true)"
+
+            if [ -z "${RUN_IDS}" ]; then
+              break
+            fi
+
+            while IFS= read -r RUN_ID; do
+              [ -z "${RUN_ID}" ] && continue
+              echo "Deleting workflow run: ${RUN_ID}"
+              gh api --method DELETE \
+                -H "Accept: application/vnd.github+json" \
+                "/repos/${GITHUB_REPOSITORY}/actions/runs/${RUN_ID}" || true
+            done <<< "${RUN_IDS}"
+          done
+
+          echo "All other workflow runs have been deleted."
+          echo "Deleting the current run last..."
+
+          gh api --method DELETE \
+            -H "Accept: application/vnd.github+json" \
+            "/repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" || true
