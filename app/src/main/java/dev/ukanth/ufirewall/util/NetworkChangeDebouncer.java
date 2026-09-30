@@ -34,6 +34,8 @@ public class NetworkChangeDebouncer {
     
     // Default debounce delay in milliseconds
     private static final long DEFAULT_DEBOUNCE_DELAY_MS = 2000; // 2 seconds
+    // Delay after disabling the firewall before re-enabling it on Wi-Fi reconnect.
+    private static final long WIFI_RECONNECT_REENABLE_DELAY_MS = 5000; // 5 seconds
     //Retry delay when rules are currently being applied
     private static final long RETRY_DELAY_MS = 500; // 500ms
     
@@ -127,9 +129,9 @@ public class NetworkChangeDebouncer {
     }
 
     /**
-     * Disable the firewall first and only after the disable operation reports success
-     * enable it again. FirewallActions invokes its callback after the root operation
-     * has completed, so enable cannot start before disable has finished.
+     * Disable the firewall first. Only after the disable operation reports success,
+     * wait exactly five seconds, then enable it again. This gives the firewall time
+     * to finish disabling before the new rules are applied.
      */
     private static void runWifiReconnectCycle(final Context context) {
         if (!Api.isEnabled(context)) {
@@ -146,17 +148,25 @@ public class NetworkChangeDebouncer {
                     return;
                 }
 
-                Log.i(TAG, "Wi-Fi reconnect: firewall disable completed; enabling firewall now");
-                FirewallActions.setEnabled(context, true, false, new FirewallActions.Done() {
+                Log.i(TAG, "Wi-Fi reconnect: firewall disable completed; waiting "
+                        + (WIFI_RECONNECT_REENABLE_DELAY_MS / 1000) + " seconds before enabling");
+
+                handler.postDelayed(new Runnable() {
                     @Override
-                    public void done(boolean enabledSuccessfully) {
-                        if (enabledSuccessfully) {
-                            Log.i(TAG, "Wi-Fi reconnect: firewall re-enabled successfully");
-                        } else {
-                            Log.e(TAG, "Wi-Fi reconnect: firewall re-enable failed");
-                        }
+                    public void run() {
+                        Log.i(TAG, "Wi-Fi reconnect: five-second wait completed; enabling firewall now");
+                        FirewallActions.setEnabled(context, true, false, new FirewallActions.Done() {
+                            @Override
+                            public void done(boolean enabledSuccessfully) {
+                                if (enabledSuccessfully) {
+                                    Log.i(TAG, "Wi-Fi reconnect: firewall re-enabled successfully");
+                                } else {
+                                    Log.e(TAG, "Wi-Fi reconnect: firewall re-enable failed");
+                                }
+                            }
+                        });
                     }
-                });
+                }, WIFI_RECONNECT_REENABLE_DELAY_MS);
             }
         });
     }
