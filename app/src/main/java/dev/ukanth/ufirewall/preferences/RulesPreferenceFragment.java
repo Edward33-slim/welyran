@@ -50,77 +50,30 @@ public class RulesPreferenceFragment extends PreferenceFragment implements
     }
 
     private void updateRuleStatus() {
-        SwitchPreference input_chain = (SwitchPreference) findPreference("input_chain");
-        input_chain.setOnPreferenceChangeListener(new Preference.OnPreferenceChangeListener() {
-            @Override
-            public boolean onPreferenceChange(Preference preference, Object o) {
-                return false;
-            }
-        });
-       /* SwitchPreference output_chain = (SwitchPreference) findPreference("output_chain");
-        SwitchPreference forward_chain = (SwitchPreference) findPreference("forward_chain");*/
-
-        SwitchPreference input_chain_v6 = (SwitchPreference) findPreference("input_chain_v6");
-        SwitchPreference output_chain_v6 = (SwitchPreference) findPreference("output_chain_v6");
-        SwitchPreference forward_chain_v6 = (SwitchPreference) findPreference("forward_chain_v6");
-
-        //ipv6 is not enabled
-        if (!G.enableIPv6()) {
-            input_chain_v6.setEnabled(false);
-            output_chain_v6.setEnabled(false);
-            forward_chain_v6.setEnabled(false);
-        }
-
-        Api.getChainStatus(ctx,  new RootCommand()
+        Api.getChainStatus(ctx, new RootCommand()
                 .setFailureToast(R.string.error_apply)
                 .setLogging(true)
                 .setCallback(new RootCommand.Callback() {
                     @Override
                     public void cbFunc(RootCommand state) {
-                        if (state.exitCode == 0) {
-                            StringBuilder result = state.res;
-                            if (result != null) {
-                                String output = result.toString();
+                        if (state.exitCode == 0 && state.res != null) {
+                            String output = state.res.toString();
 
-                                final String regexIn = "-P INPUT (\\w+)";
-                                final String regexOut = "-P OUTPUT (\\w+)";
-                                final String regexFwd = "-P FORWARD (\\w+)";
-                                final Pattern pattern = Pattern.compile(regexIn);
-                                final Pattern pattern2 = Pattern.compile(regexOut);
-                                final Pattern pattern3 = Pattern.compile(regexFwd);
-
-                                final Matcher matcher = pattern.matcher(output);
-                                boolean firstTime = true;
-                                while (matcher.find()) {
-                                    if (firstTime) {
-                                        G.ipv4Input(matcher.group(1).equals("ACCEPT"));
-                                        firstTime = false;
-                                    } else {
-                                        G.ipv6Input(matcher.group(1).equals("ACCEPT"));
-                                    }
-                                }
-                                firstTime = true;
-                                final Matcher matcher2 = pattern2.matcher(output);
-                                while (matcher2.find()) {
-                                    if (firstTime) {
-                                        G.ipv4Output(matcher2.group(1).equals("ACCEPT"));
-                                        firstTime = false;
-                                    } else {
-                                        G.ipv6Output(matcher2.group(1).equals("ACCEPT"));
-                                    }
-                                }
-                                firstTime = true;
-                                final Matcher matcher3 = pattern3.matcher(output);
-                                while (matcher3.find()) {
-                                    if (firstTime) {
-                                        G.ipv4Fwd(matcher3.group(1).equals("ACCEPT"));
-                                        firstTime = false;
-                                    } else {
-                                        G.ipv6Fwd(matcher3.group(1).equals("ACCEPT"));
-                                    }
-                                }
+                            Matcher matcher = Pattern.compile("-P INPUT (\\w+)").matcher(output);
+                            if (matcher.find()) {
+                                G.ipv4Input(matcher.group(1).equals("ACCEPT"));
                             }
-                            // callback runs on the root shell thread; rebuild the screen on the UI thread
+
+                            Matcher matcher2 = Pattern.compile("-P OUTPUT (\\w+)").matcher(output);
+                            if (matcher2.find()) {
+                                G.ipv4Output(matcher2.group(1).equals("ACCEPT"));
+                            }
+
+                            Matcher matcher3 = Pattern.compile("-P FORWARD (\\w+)").matcher(output);
+                            if (matcher3.find()) {
+                                G.ipv4Fwd(matcher3.group(1).equals("ACCEPT"));
+                            }
+
                             android.app.Activity activity = getActivity();
                             if (activity != null) {
                                 activity.runOnUiThread(() -> {
@@ -173,22 +126,6 @@ public class RulesPreferenceFragment extends PreferenceFragment implements
             if (!G.activeRules()) {
                 //disable service when there is no active rules
                 //stopService(new Intent(PreferencesActivity.this, RootShell.class));
-                CheckBoxPreference enableRoam = (CheckBoxPreference) findPreference("enableRoam");
-                enableRoam.setChecked(false);
-                CheckBoxPreference enableLAN = (CheckBoxPreference) findPreference("enableLAN");
-                enableLAN.setChecked(false);
-                CheckBoxPreference enableVPN = (CheckBoxPreference) findPreference("enableVPN");
-                enableVPN.setChecked(false);
-                CheckBoxPreference enableTether = (CheckBoxPreference) findPreference("enableTether");
-                enableTether.setChecked(false);
-                CheckBoxPreference enableTor = (CheckBoxPreference) findPreference("enableTor");
-                enableTor.setChecked(false);
-
-                G.enableRoam(false);
-                G.enableLAN(false);
-                G.enableVPN(false);
-                G.enableTether(false);
-                G.enableTor(false);
 
             }
         }
