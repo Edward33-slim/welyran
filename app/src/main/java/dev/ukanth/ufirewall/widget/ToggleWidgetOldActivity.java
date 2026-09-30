@@ -146,31 +146,10 @@ public class ToggleWidgetOldActivity extends Activity implements
         profileName = ((Button) button).getText().toString();
         buttonId = button.getId();
 
-        if (buttonId == R.id.toggle_disable_firewall && G.enableConfirm()) {
-            confirmDisableFromWidget();
-            return;
-        }
         continueClickAfterConfirmation();
     }
 
-    private void confirmDisableFromWidget() {
-        new MaterialDialog.Builder(this)
-                .title(R.string.confirmMsg)
-                .cancelable(false)
-                .positiveText(R.string.Yes)
-                .negativeText(R.string.No)
-                .onPositive((dialog, which) -> {
-                    Log.i(Api.TAG, "Legacy widget firewall disable confirmed");
-                    dialog.dismiss();
-                    continueClickAfterConfirmation();
-                })
-                .onNegative((dialog, which) -> {
-                    Log.i(Api.TAG, "Legacy widget firewall disable canceled");
-                    dialog.dismiss();
-                    finish();
-                })
-                .show();
-    }
+
 
     private void continueClickAfterConfirmation() {
         security.passCheck(allowed -> {
