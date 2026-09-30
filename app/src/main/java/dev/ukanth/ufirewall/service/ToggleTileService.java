@@ -69,7 +69,7 @@ public class ToggleTileService extends TileService {
 
     private void toggle() {
         final boolean enable = !Api.isEnabled(this);
-        boolean mustAsk = (!enable && G.enableConfirm()) || isAppLocked();
+        boolean mustAsk = isAppLocked();
         if (mustAsk) {
             // the app lock / confirmation need a screen
             launch(WidgetActionActivity.toggleIntent(this));
