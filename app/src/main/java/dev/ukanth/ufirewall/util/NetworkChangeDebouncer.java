@@ -1,20 +1,7 @@
 /**
  * Debounces rapid network connectivity changes to avoid excessive iptables rule applications.
  * <p>
- * When network changes occur rapidly (e.g., switching between WiFi and mobile data),
- * this class delays rule application until the network has been stable for a configurable
- * period. If new changes arrive before the delay expires, the pending job is cancelled
- * and rescheduled.
- * <p>
  * Copyright (C) 2025 Umakanthan Chandran
- * <p>
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * @author Umakanthan Chandran
- * @version 1.0
  */
 package dev.ukanth.ufirewall.util;
 
@@ -31,54 +18,28 @@ import dev.ukanth.ufirewall.log.Log;
 
 public class NetworkChangeDebouncer {
     private static final String TAG = "AFWall";
-    
-    // Default debounce delay in milliseconds
-    private static final long DEFAULT_DEBOUNCE_DELAY_MS = 2000; // 2 seconds
-    // Delay after disabling the firewall before re-enabling it on Wi-Fi reconnect.
-    private static final long WIFI_RECONNECT_REENABLE_DELAY_MS = 5000; // 5 seconds
-    //Retry delay when rules are currently being applied
-    private static final long RETRY_DELAY_MS = 500; // 500ms
-    
-    // Maximum retry attempts
+    private static final long DEFAULT_DEBOUNCE_DELAY_MS = 2000;
+    // After the firewall is fully disabled, wait exactly 5 seconds before enabling it.
+    private static final long WIFI_RECONNECT_REENABLE_DELAY_MS = 5000;
+    private static final long RETRY_DELAY_MS = 500;
     private static final int MAX_RETRY_ATTEMPTS = 10;
 
-    // Persist the fact that Wi-Fi went down while the firewall was enabled.
-    // This survives a service/process restart while Wi-Fi is still disconnected.
     private static final String WIFI_RECONNECT_PREFS = "wifi_reconnect_state";
     private static final String PREF_WIFI_DISCONNECTED = "wifi_disconnected";
     private static final String PREF_FIREWALL_WAS_ENABLED = "firewall_was_enabled";
-    
-    // Handler for posting delayed tasks
+
     private static final Handler handler = new Handler(Looper.getMainLooper());
-    
-    // Currently scheduled runnable (if any)
     private static final AtomicReference<Runnable> pendingRunnable = new AtomicReference<>(null);
-    
-    // Latest network change reason
     private static final AtomicReference<String> latestReason = new AtomicReference<>(null);
-    
-    // Latest context
     private static final AtomicReference<Context> latestContext = new AtomicReference<>(null);
-    
-    // Flag to track if a job is currently scheduled
     private static final AtomicBoolean isScheduled = new AtomicBoolean(false);
-    
-    // Retry counter
     private static volatile int retryCount = 0;
-    
-    // Timestamp of last change request
     private static volatile long lastChangeTimestamp = 0;
-    
-    // Counter for tracking how many changes were coalesced
     private static volatile int coalescedCount = 0;
 
-    /**
-     * Remember that Wi-Fi disconnected while the firewall was enabled.
-     */
+    /** Remember that Wi-Fi disconnected while the firewall was enabled. */
     public static void markWifiDisconnected(Context context) {
-        if (context == null) {
-            return;
-        }
+        if (context == null) return;
         Context app = context.getApplicationContext();
         android.content.SharedPreferences prefs = app.getSharedPreferences(
                 WIFI_RECONNECT_PREFS, Context.MODE_PRIVATE);
@@ -91,13 +52,11 @@ public class NetworkChangeDebouncer {
     }
 
     /**
-     * Called when Wi-Fi becomes connected again. Returns true only when this is a
-     * reconnect that was preceded by a Wi-Fi disconnect while the firewall was enabled.
+     * Called when Wi-Fi reconnects. The firewall reset starts immediately here:
+     * disable first, wait for the disable callback, wait 5 seconds, then enable.
      */
     public static boolean handleWifiConnected(Context context) {
-        if (context == null) {
-            return false;
-        }
+        if (context == null) return false;
         final Context app = context.getApplicationContext();
         android.content.SharedPreferences prefs = app.getSharedPreferences(
                 WIFI_RECONNECT_PREFS, Context.MODE_PRIVATE);
@@ -105,41 +64,28 @@ public class NetworkChangeDebouncer {
         boolean firewallWasEnabled = prefs.getBoolean(PREF_FIREWALL_WAS_ENABLED, false);
 
         if (!wasDisconnected || !firewallWasEnabled || !Api.isEnabled(app)) {
-            // Do not leave stale state behind if the firewall was manually disabled.
-            if (!Api.isEnabled(app)) {
-                prefs.edit().clear().apply();
-            }
+            if (!Api.isEnabled(app)) prefs.edit().clear().apply();
             return false;
         }
 
-        // Consume the reconnect marker before scheduling so duplicate connectivity
-        // broadcasts cannot trigger two disable/enable cycles.
+        // Consume the marker before starting so duplicate broadcasts cannot start two cycles.
         prefs.edit().clear().apply();
         cancelPendingJob();
 
-        final long debounceDelay = getDebounceDelay();
-        Log.i(TAG, "Wi-Fi reconnect detected; firewall reset scheduled in " + debounceDelay + "ms");
-        handler.postDelayed(new Runnable() {
-            @Override
-            public void run() {
-                runWifiReconnectCycle(app);
-            }
-        }, debounceDelay);
+        // IMPORTANT: no debounce delay here. Start disabling immediately on reconnect.
+        Log.i(TAG, "Wi-Fi reconnected; starting firewall disable immediately");
+        runWifiReconnectCycle(app);
         return true;
     }
 
-    /**
-     * Disable the firewall first. Only after the disable operation reports success,
-     * wait exactly five seconds, then enable it again. This gives the firewall time
-     * to finish disabling before the new rules are applied.
-     */
+    /** Disable first; only after successful completion wait 5 seconds, then enable. */
     private static void runWifiReconnectCycle(final Context context) {
         if (!Api.isEnabled(context)) {
             Log.d(TAG, "Wi-Fi reconnect firewall reset skipped: firewall is already disabled");
             return;
         }
 
-        Log.i(TAG, "Wi-Fi reconnect: disabling firewall before re-enabling it");
+        Log.i(TAG, "Wi-Fi reconnect: disabling firewall now");
         FirewallActions.setEnabled(context, false, false, new FirewallActions.Done() {
             @Override
             public void done(boolean disabledSuccessfully) {
@@ -148,13 +94,11 @@ public class NetworkChangeDebouncer {
                     return;
                 }
 
-                Log.i(TAG, "Wi-Fi reconnect: firewall disable completed; waiting "
-                        + (WIFI_RECONNECT_REENABLE_DELAY_MS / 1000) + " seconds before enabling");
-
+                Log.i(TAG, "Wi-Fi reconnect: firewall disabled; waiting 5 seconds");
                 handler.postDelayed(new Runnable() {
                     @Override
                     public void run() {
-                        Log.i(TAG, "Wi-Fi reconnect: five-second wait completed; enabling firewall now");
+                        Log.i(TAG, "Wi-Fi reconnect: 5 seconds completed; enabling firewall");
                         FirewallActions.setEnabled(context, true, false, new FirewallActions.Done() {
                             @Override
                             public void done(boolean enabledSuccessfully) {
@@ -171,26 +115,13 @@ public class NetworkChangeDebouncer {
         });
     }
 
-    /**
-     * Schedule a network change to be processed after the debounce delay.
-     * If a job is already scheduled, it will be cancelled and replaced with this one.
-     *
-     * @param context Application context
-     * @param reason  Reason for the network change (e.g., CONNECTIVITY_CHANGE)
-     */
     public static void scheduleNetworkChange(Context context, String reason) {
-        // Cancel any existing pending job
         cancelPendingJob();
-        
-        // Store the latest change information
         latestContext.set(context.getApplicationContext());
         latestReason.set(reason);
         lastChangeTimestamp = System.currentTimeMillis();
-        
-        // Get debounce delay from preferences
         long debounceDelay = getDebounceDelay();
-        
-        // Increment coalesced counter
+
         if (isScheduled.get()) {
             coalescedCount++;
             Log.d(TAG, "Network change coalesced (total: " + coalescedCount + "): " + reason);
@@ -199,50 +130,28 @@ public class NetworkChangeDebouncer {
             retryCount = 0;
             Log.d(TAG, "Network change scheduled with " + debounceDelay + "ms delay: " + reason);
         }
-        
-        // Create new runnable for applying rules
+
         Runnable applyRulesRunnable = new Runnable() {
             @Override
             public void run() {
                 try {
                     Context ctx = latestContext.get();
                     String finalReason = latestReason.get();
-                    
                     if (ctx != null && finalReason != null) {
-                        // Check if rules are currently being applied
                         if (Api.isRulesBeingApplied()) {
                             if (retryCount < MAX_RETRY_ATTEMPTS) {
                                 retryCount++;
-                                Log.d(TAG, "Rules currently being applied, retrying in " + RETRY_DELAY_MS + "ms (attempt " + retryCount + ")");
-                                // Reschedule with shorter delay
                                 handler.postDelayed(this, RETRY_DELAY_MS);
                                 return;
-                            } else {
-                                Log.w(TAG, "Max retry attempts reached, forcing rule application");
                             }
                         }
-                        
-                        long elapsedTime = System.currentTimeMillis() - lastChangeTimestamp;
-                        if (coalescedCount > 0) {
-                            Log.i(TAG, "Applying rules after debounce (" + elapsedTime + "ms, " + 
-                                  coalescedCount + " changes coalesced): " + finalReason);
-                        } else {
-                            Log.i(TAG, "Applying rules after debounce (" + elapsedTime + "ms): " + finalReason);
-                        }
-                        
-                        // Apply the rules
                         InterfaceTracker.applyRulesOnChange(ctx, finalReason);
-                        
-                        // Reset state
                         coalescedCount = 0;
                         retryCount = 0;
-                    } else {
-                        Log.w(TAG, "Cannot apply rules: context or reason is null");
                     }
                 } catch (Exception e) {
                     Log.e(TAG, "Error applying rules after debounce: " + e.getMessage(), e);
                 } finally {
-                    // Clear scheduled state only if not retrying
                     if (retryCount == 0 || retryCount >= MAX_RETRY_ATTEMPTS) {
                         isScheduled.set(false);
                         pendingRunnable.set(null);
@@ -250,75 +159,45 @@ public class NetworkChangeDebouncer {
                 }
             }
         };
-        
-        // Store the runnable and schedule it
+
         pendingRunnable.set(applyRulesRunnable);
         isScheduled.set(true);
         handler.postDelayed(applyRulesRunnable, debounceDelay);
     }
-    
-    /**
-     * Cancel any pending network change job.
-     */
+
     private static void cancelPendingJob() {
         Runnable existingRunnable = pendingRunnable.getAndSet(null);
-        if (existingRunnable != null) {
-            handler.removeCallbacks(existingRunnable);
-            Log.d(TAG, "Cancelled pending network change job");
-        }
+        if (existingRunnable != null) handler.removeCallbacks(existingRunnable);
         isScheduled.set(false);
     }
-    
-    /**
-     * Check if a job is currently scheduled.
-     *
-     * @return true if a network change job is pending
-     */
+
     public static boolean isPending() {
         return isScheduled.get();
     }
-    
-    /**
-     * Get the debounce delay from preferences.
-     * Falls back to default if preference is not set or invalid.
-     *
-     * @return Debounce delay in milliseconds
-     */
+
     private static long getDebounceDelay() {
         try {
-            // Try to get user-configured delay from preferences
             int delaySeconds = G.getNetworkDebounceDelay();
-            if (delaySeconds > 0 && delaySeconds <= 30) {
-                return delaySeconds * 1000L;
-            }
+            if (delaySeconds > 0 && delaySeconds <= 30) return delaySeconds * 1000L;
         } catch (Exception e) {
             Log.w(TAG, "Error reading debounce delay preference: " + e.getMessage());
         }
         return DEFAULT_DEBOUNCE_DELAY_MS;
     }
-    
-    /**
-     * Force immediate execution of any pending job (for testing or emergency situations).
-     */
+
     public static void flushPending() {
         Runnable existingRunnable = pendingRunnable.getAndSet(null);
         if (existingRunnable != null) {
             handler.removeCallbacks(existingRunnable);
-            Log.i(TAG, "Flushing pending network change job immediately");
-            // Execute immediately on current thread
             existingRunnable.run();
         }
     }
-    
-    /**
-     * Clear all pending jobs without executing them (for cleanup).
-     */
+
     public static void clear() {
         cancelPendingJob();
         latestContext.set(null);
         latestReason.set(null);
         coalescedCount = 0;
         retryCount = 0;
-        Log.d(TAG, "Cleared all pending network change jobs");
     }
 }
