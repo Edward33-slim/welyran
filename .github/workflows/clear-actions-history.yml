@@ -10,36 +10,19 @@ jobs:
   clear-actions-history:
     runs-on: ubuntu-latest
     steps:
-      - name: Delete all workflow runs
+      - name: Delete workflow runs
         env:
           GH_TOKEN: ${{ github.token }}
+        shell: bash
         run: |
-          set -e
+          set -euo pipefail
 
-          echo "Deleting all workflow runs except the current run..."
+          echo "Repository: ${GITHUB_REPOSITORY}"
+          echo "Current run: ${GITHUB_RUN_ID}"
 
-          while true; do
-            RUN_IDS="$(gh api --paginate \
-              -H "Accept: application/vnd.github+json" \
-              "/repos/${GITHUB_REPOSITORY}/actions/runs?per_page=100" \
-              --jq '.workflow_runs[].id' | grep -v "^${GITHUB_RUN_ID}$" || true)"
-
-            if [ -z "${RUN_IDS}" ]; then
-              break
-            fi
-
-            while IFS= read -r RUN_ID; do
-              [ -z "${RUN_ID}" ] && continue
-              echo "Deleting workflow run: ${RUN_ID}"
-              gh api --method DELETE \
-                -H "Accept: application/vnd.github+json" \
-                "/repos/${GITHUB_REPOSITORY}/actions/runs/${RUN_ID}" || true
-            done <<< "${RUN_IDS}"
-          done
-
-          echo "All other workflow runs have been deleted."
-          echo "Deleting the current run last..."
-
-          gh api --method DELETE \
+          gh api \
+            --method DELETE \
             -H "Accept: application/vnd.github+json" \
             "/repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" || true
+
+          echo "The current run deletion request was sent."
