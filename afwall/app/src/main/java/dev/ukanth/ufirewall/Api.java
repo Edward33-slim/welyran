@@ -1040,6 +1040,12 @@ public final class Api {
                     "-A " + chainName + "-wifi-postcustom",
                     "-j RETURN");
 
+// DHCP client traffic is commonly owned by Android System (UID 1000) on
+// Android 10+ and can be blocked by the per-UID wifi-wan rules. Allow the
+// DHCP client exchange by port before UID filtering so Wi-Fi can acquire or
+// renew its address without requiring a visible UID 1000 checkbox.
+cmds.add("-A " + chainName + "-wifi-wan -p udp --sport 68 --dport 67 -j RETURN");
+
             if (cfg.isWifiTethered || cfg.isUsbTethered) {
                 if (cfg.isWifiTethered) {
                     cmds.add("-A " + chainName + "-wifi-postcustom -j " + chainName + "-wifi-tether");
