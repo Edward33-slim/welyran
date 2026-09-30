@@ -717,6 +717,12 @@ public class MainActivity extends AppCompatActivity implements AdapterView.OnIte
 
         clearNotification();
 
+        if (G.disableIcons()) {
+            this.findViewById(R.id.imageHolder).setVisibility(View.GONE);
+        } else {
+            this.findViewById(R.id.imageHolder).setVisibility(View.VISIBLE);
+        }
+
         if (G.showFilter()) {
             this.findViewById(R.id.filerOption).setVisibility(View.VISIBLE);
         } else {
