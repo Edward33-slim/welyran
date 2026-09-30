@@ -1031,10 +1031,14 @@ public final class Api {
                 cmds.add("-F " + chainName + s);
             }
 
-            if (whitelist) {
-                // always allow the DHCP client full wifi access
-                addRuleForUsers(cmds, new String[]{"dhcp", "wifi"}, "-A " + chainName + "-wifi-postcustom", "-j RETURN");
-            }
+            // Android may use different system UIDs for Wi-Fi provisioning depending on
+            // the ROM/version (dhcp, wifi, network_stack, and root). These processes must be
+            // able to complete DHCP/network provisioning while the firewall stays enabled.
+            // Keep this allowance independent of the selected whitelist/blacklist mode.
+            addRuleForUsers(cmds,
+                    new String[]{"dhcp", "wifi", "network_stack", "root", "nobody", "dns_tether"},
+                    "-A " + chainName + "-wifi-postcustom",
+                    "-j RETURN");
 
             if (cfg.isWifiTethered || cfg.isUsbTethered) {
                 if (cfg.isWifiTethered) {
