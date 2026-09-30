@@ -261,7 +261,6 @@ public class PreferencesActivity extends PreferenceActivity implements SharedPre
         
         return UIPreferenceFragment.class.getName().equals(fragmentName)
                 || ThemePreferenceFragment.class.getName().equals(fragmentName)
-                || CustomThemePreferenceFragment.class.getName().equals(fragmentName)
                 || RulesPreferenceFragment.class.getName().equals(fragmentName)
                 || LogPreferenceFragment.class.getName().equals(fragmentName)
                 || CustomBinaryPreferenceFragment.class.getName().equals(fragmentName)
