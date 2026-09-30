@@ -26,13 +26,18 @@ jobs:
           set -euo pipefail
           git clone --depth 1 --branch beta https://github.com/ukanth/afwall.git /tmp/afwall
 
-      - name: Replace repository contents with AFWall+
+      - name: Replace repository contents with AFWall+ source
         run: |
           set -euo pipefail
 
           find . -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf -- {} +
           rm -rf /tmp/afwall/.git
           cp -a /tmp/afwall/. .
+
+          # The GitHub token cannot push workflow files without the
+          # repository's Workflows permission. They are added separately.
+          rm -f .github/workflows/android.yml
+          rm -f .github/workflows/build-binaries.yml
 
       - name: Commit and push AFWall+ source
         run: |
