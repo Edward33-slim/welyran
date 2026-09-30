@@ -118,10 +118,7 @@ public class AppListArrayAdapter extends ArrayAdapter<PackageInfoData> {
             holder.text = convertView.findViewById(R.id.itemtext);
             holder.icon = convertView.findViewById(R.id.itemicon);
 
-            if (G.disableIcons()) {
-                holder.icon.setVisibility(View.GONE);
-                activity.findViewById(R.id.imageHolder).setVisibility(View.GONE);
-            }
+
             convertView.setTag(holder);
         } else {
             // Convert an existing view
@@ -150,10 +147,7 @@ public class AppListArrayAdapter extends ArrayAdapter<PackageInfoData> {
 
             holder.text = convertView.findViewById(R.id.itemtext);
             holder.icon = convertView.findViewById(R.id.itemicon);
-            if (G.disableIcons()) {
-                holder.icon.setVisibility(View.GONE);
-                activity.findViewById(R.id.imageHolder).setVisibility(View.GONE);
-            }
+
         }
 
 
@@ -177,14 +171,12 @@ public class AppListArrayAdapter extends ArrayAdapter<PackageInfoData> {
             holder.text.setTextColor(G.sysColor(context));
         }
 
-        if (!G.disableIcons()) {
+        {
             if (usesDefaultAndroidIcon(holder.app)) {
                 holder.icon.setImageDrawable(ThemeHelper.defaultAndroidIcon(context));
             } else {
                 holder.icon.setImageDrawable(holder.app.cached_icon);
                 if (!holder.app.icon_loaded && info != null) {
-                    // this icon has not been loaded yet - load it on a
-                    // separated thread
                     try {
                         new LoadIconTask().executeOnExecutor(AsyncTask.THREAD_POOL_EXECUTOR, holder.app,
                                 context.getPackageManager(), convertView);
@@ -192,10 +184,6 @@ public class AppListArrayAdapter extends ArrayAdapter<PackageInfoData> {
                     }
                 }
             }
-
-        } else {
-            holder.icon.setVisibility(View.GONE);
-            activity.findViewById(R.id.imageHolder).setVisibility(View.GONE);
         }
 
         holder.box_wifi.setTag(holder.app);
