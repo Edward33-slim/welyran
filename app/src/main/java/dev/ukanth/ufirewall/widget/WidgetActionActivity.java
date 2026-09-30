@@ -92,24 +92,7 @@ public class WidgetActionActivity extends Activity {
 
     private void toggle() {
         final boolean enable = !Api.isEnabled(this);
-        if (!enable && G.enableConfirm()) {
-            new MaterialDialog.Builder(this)
-                    .title(R.string.confirmMsg)
-                    .cancelable(false)
-                    .positiveText(R.string.Yes)
-                    .negativeText(R.string.No)
-                    .onPositive((dialog, which) -> {
-                        dialog.dismiss();
-                        checkLockThenRun(() -> setEnabled(false));
-                    })
-                    .onNegative((dialog, which) -> {
-                        dialog.dismiss();
-                        finish();
-                    })
-                    .show();
-        } else {
-            checkLockThenRun(() -> setEnabled(enable));
-        }
+        checkLockThenRun(() -> setEnabled(enable));
     }
 
     private void setEnabled(boolean enable) {
