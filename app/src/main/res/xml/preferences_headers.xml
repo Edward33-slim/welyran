@@ -17,27 +17,6 @@
         android:title="@string/rules_prefs_title" />
 
     <header
-        android:fragment="dev.ukanth.ufirewall.preferences.LogPreferenceFragment"
-        android:icon="@drawable/ic_log"
-        android:title="@string/log_prefs_title" />
-    <header
-        android:fragment="dev.ukanth.ufirewall.preferences.SecPreferenceFragment"
-        android:icon="@drawable/ic_menu_secure"
-        android:title="@string/sec_prefs_title" />
-    <header
-        android:fragment="dev.ukanth.ufirewall.preferences.MultiProfilePreferenceFragment"
-        android:icon="@drawable/ic_menu_profile"
-        android:title="@string/mp_prefs_title" />
-    <header
-        android:fragment="dev.ukanth.ufirewall.preferences.CustomBinaryPreferenceFragment"
-        android:icon="@drawable/ic_menu_binary"
-        android:title="@string/binaries" />
-    <header
-        android:fragment="dev.ukanth.ufirewall.preferences.WidgetPreferenceFragment"
-        android:icon="@drawable/ic_menu_widget"
-        android:title="@string/widgets" />
-
-    <header
         android:fragment="dev.ukanth.ufirewall.preferences.LanguagePreferenceFragment"
         android:icon="@drawable/ic_menu_translate"
         android:title="@string/misc_header" />
