@@ -1,4 +1,4 @@
-name: Clear Actions History
+name: Clear All Actions History
 
 on:
   workflow_dispatch:
@@ -10,7 +10,7 @@ jobs:
   clear-actions-history:
     runs-on: ubuntu-latest
     steps:
-      - name: Delete workflow runs
+      - name: Delete all workflow runs except this run
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
@@ -19,10 +19,26 @@ jobs:
 
           echo "Repository: ${GITHUB_REPOSITORY}"
           echo "Current run: ${GITHUB_RUN_ID}"
+          echo "Collecting all workflow run IDs..."
 
-          gh api \
-            --method DELETE \
-            -H "Accept: application/vnd.github+json" \
-            "/repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" || true
+          gh api             --paginate             -H "Accept: application/vnd.github+json"             "/repos/${GITHUB_REPOSITORY}/actions/runs?per_page=100"             --jq '.workflow_runs[].id' > /tmp/run_ids
 
-          echo "The current run deletion request was sent."
+          count=0
+
+          while IFS= read -r RUN_ID; do
+            [ -z "${RUN_ID}" ] && continue
+
+            if [ "${RUN_ID}" = "${GITHUB_RUN_ID}" ]; then
+              continue
+            fi
+
+            echo "Deleting workflow run ${RUN_ID}..."
+            if gh api               --method DELETE               -H "Accept: application/vnd.github+json"               "/repos/${GITHUB_REPOSITORY}/actions/runs/${RUN_ID}"; then
+              count=$((count + 1))
+            else
+              echo "Could not delete run ${RUN_ID}; continuing..."
+            fi
+          done < /tmp/run_ids
+
+          echo "Deleted ${count} old workflow run records."
+          echo "The current run is intentionally kept because it is the run executing this cleanup."
