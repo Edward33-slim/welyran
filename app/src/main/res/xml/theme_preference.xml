@@ -15,9 +15,4 @@
         android:key="sysColor"
         android:title="@string/syscolor_pref_title" />
 
-    <Preference
-        android:key="customThemeColorsScreen"
-        android:summary="@string/custom_theme_colors_summary"
-        android:title="@string/custom_theme_colors_title" />
-
 </PreferenceScreen>
