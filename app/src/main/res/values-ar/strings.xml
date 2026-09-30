@@ -5,9 +5,9 @@
        By community with many improvements by Gitoffthelawn
     -->
     <!-- main -->
-    <string name="app_name">AfWall+ </string>
+    <string name="app_name">SkipWi</string>
     <string name="app_name_donate">نسخة (التبرع)</string>
-    <string name="title_disabled">AFWall+ (معطل)</string>
+    <string name="title_disabled">SkipWi (معطل)</string>
     <string name="whitelist_array_item">السماح للمحدد</string>
     <string name="blacklist_array_item">منع المحدد</string>
     <string name="showrules">إظهار القواعد</string>
