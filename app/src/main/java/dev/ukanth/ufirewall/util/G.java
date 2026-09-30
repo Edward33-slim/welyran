@@ -101,14 +101,9 @@ public class G extends Application implements Application.ActivityLifecycleCallb
 
     private static final String HAS_ROOT = "hasRoot";
     private static final String FIX_START_LEAK = "fixLeak";
-    private static final String DISABLE_TASKER_TOAST = "disableTaskerToast";
-    private static final String ALLOW_TASKER_CONTROL = "allowTaskerControl";
     private static final String REG_DO = "ipurchaseddonatekey";
-    private static final String ENABLE_ROAM = "enableRoam";
-    private static final String ENABLE_VPN = "enableVPN";
     private static final String ENABLE_TETHER = "enableTether";
     private static final String ENABLE_LAN = "enableLAN";
-    private static final String ENABLE_TOR = "enableTor";
     private static final String ENABLE_IPV6 = "enableIPv6";
     private static final String CONTROL_IPV6 = "controlIPv6";
     private static final String SELECTED_FILTER = "selectedFilter";
@@ -119,11 +114,9 @@ public class G extends Application implements Application.ActivityLifecycleCallb
     private static final String ENABLE_ADMIN = "enableAdmin";
     private static final String DUAL_APPS = "supportDualApps";
     private static final String ENABLE_DEVICE_CHECK = "enableDeviceCheck";
-    private static final String ENABLE_CONFIRM = "enableConfirm";
     private static final String ENABLE_MULTI_PROFILE = "enableMultiProfile";
     private static final String SHOW_UID = "showUid";
     private static final String NOTIFY_INSTALL = "notifyAppInstall";
-    private static final String DISABLE_ICONS = "disableIcons";
     private static final String IPTABLES_PATH = "ipt_path";
     private static final String IPTABLES_BUILTIN_FAILED = "ipt_builtin_failed";
     private static final String PROTECTION_OPTION = "passSetting";
@@ -512,17 +505,13 @@ public class G extends Application implements Application.ActivityLifecycleCallb
         return gPrefs.getBoolean(FIX_START_LEAK, false);
     }
 
-    public static boolean disableTaskerToast() {
-        return gPrefs.getBoolean(DISABLE_TASKER_TOAST, false);
-    }
+
 
     /**
      * Tasker/Locale actions are accepted from any app (the plug-in API can't tell who sends them);
      * on by default so existing setups keep working.
      */
-    public static boolean allowTaskerControl() {
-        return gPrefs.getBoolean(ALLOW_TASKER_CONTROL, true);
-    }
+
 
     public static boolean enableIPv6() {
         return gPrefs.getBoolean(ENABLE_IPV6, true);
@@ -616,9 +605,7 @@ public class G extends Application implements Application.ActivityLifecycleCallb
         return val;
     }
 
-    public static boolean enableConfirm() {
-        return gPrefs.getBoolean(ENABLE_CONFIRM, false);
-    }
+
 
     public static boolean enableMultiProfile() {
         return gPrefs.getBoolean(ENABLE_MULTI_PROFILE, false);
@@ -666,9 +653,7 @@ public class G extends Application implements Application.ActivityLifecycleCallb
         return val;
     }
 
-    public static boolean disableIcons() {
-        return gPrefs.getBoolean(DISABLE_ICONS, false);
-    }
+
 
     public static String ip_path() {
         return gPrefs.getString(IPTABLES_PATH, "system");
@@ -1033,23 +1018,9 @@ public class G extends Application implements Application.ActivityLifecycleCallb
         return val;
     }
 
-    public static boolean enableRoam() {
-        return gPrefs.getBoolean(ENABLE_ROAM, false);
-    }
+    public static boolean enableRoam() { return false; }
 
-    public static boolean enableRoam(boolean val) {
-        gPrefs.edit().putBoolean(ENABLE_ROAM, val).commit();
-        return val;
-    }
-
-    public static boolean enableVPN() {
-        return gPrefs.getBoolean(ENABLE_VPN, false);
-    }
-
-    public static boolean enableVPN(boolean val) {
-        gPrefs.edit().putBoolean(ENABLE_VPN, val).commit();
-        return val;
-    }
+    public static boolean enableVPN() { return false; }
 
     public static boolean enableTether() {
         return gPrefs.getBoolean(ENABLE_TETHER, false);
@@ -1069,14 +1040,7 @@ public class G extends Application implements Application.ActivityLifecycleCallb
         return val;
     }
 
-    public static boolean enableTor() {
-        return gPrefs.getBoolean(ENABLE_TOR, false);
-    }
-
-    public static boolean enableTor(boolean val) {
-        gPrefs.edit().putBoolean(ENABLE_TOR, val).commit();
-        return val;
-    }
+    public static boolean enableTor() { return false; }
 
     private static Boolean ownerModuleAvailable = null;
 
