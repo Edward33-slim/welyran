@@ -1,0 +1,54 @@
+# built application files
+*.apk
+*.ap_
+
+.DS_Store
+
+make-donate.sh
+
+# Files for the dex VM
+*.dex
+
+# Java class files
+*.class
+
+# Auto generated files
+bin/
+gen/
+out/
+build/
+build.xml
+
+# Gradle
+.gradle/
+
+# Log Files
+*.log
+
+# Local configuration file (sdk path, etc)
+local.properties
+
+# Eclipse project files
+.classpath
+.project
+proguard/
+
+# Editor swap/save files
+*~
+*.swp
+
+# native binaries
+libs/
+obj/
+
+# IDE related 
+.idea/
+*.iml
+app/*.iml
+.settings/
+
+# Proguard 
+proguard-project.txt
+copy.sh
+make
+makeclean
