@@ -1137,11 +1137,7 @@ public class MainActivity extends AppCompatActivity implements AdapterView.OnIte
         if (enabled) {
             applyOrSaveRules();
         } else {
-            if (G.enableConfirm()) {
-                confirmDisable();
-            } else {
-                purgeRules();
-            }
+            purgeRules();
         }
         //refreshHeader();
     }
@@ -1188,48 +1184,13 @@ public class MainActivity extends AppCompatActivity implements AdapterView.OnIte
         } else if (selectedItem == R.id.menu_apply) {
             applyOrSaveRules();
             return true;
-        } else if (selectedItem == R.id.menu_exit) {
-            finish();
-            return true;
-        } else if (selectedItem == R.id.menu_help) {
-            showAbout();
-            return true;
-        } else if (selectedItem == R.id.menu_log) {
-            showLog();
-            return true;
-        } else if (selectedItem == R.id.menu_rules) {
-            showRules();
-            return true;
-        } else if (selectedItem == R.id.menu_setcustom) {
-            setCustomScript();
-            return true;
         } else if (selectedItem == R.id.menu_preference) {
             showPreferences();
             return true;
         } else if (selectedItem == R.id.menu_search) {
             search(item);
             return true;
-        } else if (selectedItem == R.id.menu_export) {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                // Do some stuff
-                showExportDialog();
-            } else {
-                if (ActivityCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE)
-                        != PackageManager.PERMISSION_GRANTED) {
-                    // permissions have not been granted.
-                    ActivityCompat.requestPermissions(MainActivity.this,
-                            new String[]{Manifest.permission.WRITE_EXTERNAL_STORAGE},
-                            MY_PERMISSIONS_REQUEST_WRITE_STORAGE);
-                } else {
-                    showExportDialog();
-                }
-            }
-            return true;
-        } else if (selectedItem == R.id.menu_import) {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                // Copy old data and show import dialog when complete
-                copyOldExportedData();
-            } else {
+        } else {
                 if (ActivityCompat.checkSelfPermission(this, Manifest.permission.READ_EXTERNAL_STORAGE)
                         != PackageManager.PERMISSION_GRANTED) {
                     // permissions have not been granted.
@@ -1563,25 +1524,7 @@ public class MainActivity extends AppCompatActivity implements AdapterView.OnIte
         }
     }
 
-    public void confirmDisable() {
 
-        new MaterialDialog.Builder(this)
-                .title(R.string.confirmMsg)
-                //.content(R.string.confirmMsg)
-                .cancelable(false)
-                .onPositive((dialog, which) -> {
-                    purgeRules();
-                    Api.updateNotification(Api.isEnabled(getApplicationContext()), getApplicationContext());
-                    dialog.dismiss();
-                })
-                .onNegative((dialog, which) -> {
-                    Api.setEnabled(getApplicationContext(), true, true);
-                    dialog.dismiss();
-                })
-                .positiveText(R.string.Yes)
-                .negativeText(R.string.No)
-                .show();
-    }
 
     /**
      * Set a new init script
