@@ -50,7 +50,12 @@ public class ConnectivityChangeReceiver extends BroadcastReceiver {
         Api.noteNetworkChange();
 
         int status = Api.getConnectivityStatus(context);
-        if (status > 0) {
+
+        // Process both connected and disconnected states.
+        // When Wi-Fi is turned off, Android reports no active network (status == 0).
+        // We must still record that state so the next Wi-Fi connection is detected as
+        // a real interface change and the enabled firewall rules are reapplied.
+        if (Api.isEnabled(context) && G.activeRules()) {
 
             // NOTE: this gets called for wifi/3G/tether/roam changes but not VPN connect/disconnect
             // This will prevent applying rules when the user disable the option in preferences. This is for low end devices
