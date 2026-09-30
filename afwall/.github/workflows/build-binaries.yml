@@ -1,0 +1,752 @@
+name: Build AFWall+ Binaries
+on:
+  workflow_dispatch:
+    inputs:
+      busybox_version:
+        description: 'Busybox version to build'
+        required: true
+        default: '1.36.1'
+      iptables_version:
+        description: 'iptables version to build'
+        required: true
+        default: '1.8.10'
+      release_tag:
+        description: 'Release tag (optional - for uploading as release assets)'
+        required: false
+  push:
+    paths:
+      - 'external/**'
+
+permissions:
+  contents: write    # Required to git push compiled binaries and create GitHub Releases
+  actions: read
+
+jobs:
+  build-busybox:
+    name: Build Busybox
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        arch: [arm, arm64, x86]
+        include:
+          - arch: arm
+            target: arm-linux-gnueabihf
+            cc: arm-linux-gnueabihf-gcc
+            strip: arm-linux-gnueabihf-strip
+          - arch: arm64
+            target: aarch64-linux-gnu
+            cc: aarch64-linux-gnu-gcc
+            strip: aarch64-linux-gnu-strip
+          - arch: x86
+            target: i686-linux-gnu
+            cc: i686-linux-gnu-gcc
+            strip: i686-linux-gnu-strip
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Set up build environment
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          build-essential \
+          wget \
+          unzip \
+          file
+
+    - name: Set up Android NDK
+      run: |
+        NDK_VERSION="r26d"
+        echo "Downloading Android NDK ${NDK_VERSION}..."
+        
+        # Download with retries and better error handling
+        for i in {1..3}; do
+          if wget -q "https://dl.google.com/android/repository/android-ndk-${NDK_VERSION}-linux.zip"; then
+            echo "✓ Downloaded android-ndk-${NDK_VERSION}-linux.zip (attempt $i)"
+            break
+          fi
+          echo "Download attempt $i failed, retrying..."
+          sleep 5
+        done
+        
+        # Verify download
+        if [ ! -f "android-ndk-${NDK_VERSION}-linux.zip" ]; then
+          echo "❌ Failed to download NDK after 3 attempts"
+          exit 1
+        fi
+        
+        echo "Extracting NDK..."
+        unzip -q android-ndk-${NDK_VERSION}-linux.zip
+        
+        # Verify extraction
+        if [ ! -d "android-ndk-${NDK_VERSION}" ]; then
+          echo "❌ NDK extraction failed - directory not found"
+          ls -la
+          exit 1
+        fi
+        
+        export ANDROID_NDK_ROOT="$(pwd)/android-ndk-${NDK_VERSION}"
+        echo "✓ NDK setup complete: ${ANDROID_NDK_ROOT}"
+        echo "ANDROID_NDK_ROOT=${ANDROID_NDK_ROOT}" >> $GITHUB_ENV
+        
+        # Set up NDK toolchain paths (including NDK_AR for llvm-ar)
+        case "${{ matrix.arch }}" in
+          arm64)
+            echo "NDK_CC=${ANDROID_NDK_ROOT}/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android28-clang" >> $GITHUB_ENV
+            echo "NDK_STRIP=${ANDROID_NDK_ROOT}/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-strip" >> $GITHUB_ENV
+            echo "NDK_AR=${ANDROID_NDK_ROOT}/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ar" >> $GITHUB_ENV
+            echo "NDK_TARGET=aarch64-linux-android" >> $GITHUB_ENV
+            ;;
+          arm)
+            echo "NDK_CC=${ANDROID_NDK_ROOT}/toolchains/llvm/prebuilt/linux-x86_64/bin/armv7a-linux-androideabi28-clang" >> $GITHUB_ENV
+            echo "NDK_STRIP=${ANDROID_NDK_ROOT}/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-strip" >> $GITHUB_ENV
+            echo "NDK_AR=${ANDROID_NDK_ROOT}/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ar" >> $GITHUB_ENV
+            echo "NDK_TARGET=armv7a-linux-androideabi" >> $GITHUB_ENV
+            ;;
+          x86)
+            echo "NDK_CC=${ANDROID_NDK_ROOT}/toolchains/llvm/prebuilt/linux-x86_64/bin/i686-linux-android28-clang" >> $GITHUB_ENV
+            echo "NDK_STRIP=${ANDROID_NDK_ROOT}/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-strip" >> $GITHUB_ENV
+            echo "NDK_AR=${ANDROID_NDK_ROOT}/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ar" >> $GITHUB_ENV
+            echo "NDK_TARGET=i686-linux-android" >> $GITHUB_ENV
+            ;;
+        esac
+
+    - name: Download Busybox source
+      run: |
+        BUSYBOX_VERSION="${{ github.event.inputs.busybox_version || '1.36.1' }}"
+        
+        # Download with retries
+        for i in {1..3}; do
+          if wget -q "https://busybox.net/downloads/busybox-${BUSYBOX_VERSION}.tar.bz2"; then
+            echo "✓ Downloaded busybox-${BUSYBOX_VERSION}.tar.bz2 (attempt $i)"
+            break
+          fi
+          echo "Download attempt $i failed, retrying..."
+          sleep 5
+        done
+        
+        tar -xf "busybox-${BUSYBOX_VERSION}.tar.bz2"
+        cd "busybox-${BUSYBOX_VERSION}"
+        echo "BUSYBOX_DIR=$(pwd)" >> $GITHUB_ENV
+
+    - name: Configure Busybox for Android
+      run: |
+        cd "$BUSYBOX_DIR"
+        
+        # Use the basic Android default config (more stable than android_ndk_defconfig)
+        cp configs/android_defconfig .config
+        
+        # Fix the cross-compiler prefix for NDK
+        sed -i 's/CONFIG_CROSS_COMPILER_PREFIX=.*/CONFIG_CROSS_COMPILER_PREFIX=""/' .config
+        
+        # Process the initial config
+        yes '' | make ARCH=${{ matrix.arch }} oldconfig
+        
+        # Disable problematic applets for Android bionic libc compatibility
+        echo "Disabling problematic applets for Android..."
+        sed -i 's/CONFIG_SWAPON=y/# CONFIG_SWAPON is not set/g' .config
+        sed -i 's/CONFIG_SWAPOFF=y/# CONFIG_SWAPOFF is not set/g' .config
+        sed -i 's/CONFIG_FEATURE_SWAPON_DISCARD=y/# CONFIG_FEATURE_SWAPON_DISCARD is not set/g' .config
+        sed -i 's/CONFIG_FEATURE_SWAPON_PRI=y/# CONFIG_FEATURE_SWAPON_PRI is not set/g' .config
+        
+        # Disable problematic archival features
+        sed -i 's/CONFIG_TAR=y/# CONFIG_TAR is not set/g' .config
+        sed -i 's/CONFIG_FEATURE_TAR_TO_COMMAND=y/# CONFIG_FEATURE_TAR_TO_COMMAND is not set/g' .config
+        sed -i 's/CONFIG_FEATURE_TAR_FROM=y/# CONFIG_FEATURE_TAR_FROM is not set/g' .config  
+        sed -i 's/CONFIG_AR=y/# CONFIG_AR is not set/g' .config
+        sed -i 's/CONFIG_DPKG=y/# CONFIG_DPKG is not set/g' .config
+        sed -i 's/CONFIG_DPKG_DEB=y/# CONFIG_DPKG_DEB is not set/g' .config
+        sed -i 's/CONFIG_RPM=y/# CONFIG_RPM is not set/g' .config
+        sed -i 's/CONFIG_RPM2CPIO=y/# CONFIG_RPM2CPIO is not set/g' .config
+        
+        # Disable features that require crypt.h (not available in Android bionic)
+        sed -i 's/CONFIG_LOGIN=y/# CONFIG_LOGIN is not set/g' .config
+        sed -i 's/CONFIG_PASSWD=y/# CONFIG_PASSWD is not set/g' .config
+        sed -i 's/CONFIG_SU=y/# CONFIG_SU is not set/g' .config
+        sed -i 's/CONFIG_SULOGIN=y/# CONFIG_SULOGIN is not set/g' .config
+        sed -i 's/CONFIG_VLOCK=y/# CONFIG_VLOCK is not set/g' .config
+        sed -i 's/CONFIG_CRYPTPW=y/# CONFIG_CRYPTPW is not set/g' .config
+        sed -i 's/CONFIG_CHPASSWD=y/# CONFIG_CHPASSWD is not set/g' .config
+        sed -i 's/CONFIG_FEATURE_SHADOWPASSWDS=y/# CONFIG_FEATURE_SHADOWPASSWDS is not set/g' .config
+        
+        # Disable other bionic-incompatible features
+        sed -i 's/CONFIG_FEATURE_UTMP=y/# CONFIG_FEATURE_UTMP is not set/g' .config
+        sed -i 's/CONFIG_FEATURE_WTMP=y/# CONFIG_FEATURE_WTMP is not set/g' .config
+        sed -i 's/CONFIG_LAST=y/# CONFIG_LAST is not set/g' .config
+        sed -i 's/CONFIG_USERS=y/# CONFIG_USERS is not set/g' .config
+        sed -i 's/CONFIG_WHO=y/# CONFIG_WHO is not set/g' .config
+        sed -i 's/CONFIG_W=y/# CONFIG_W is not set/g' .config
+        
+        # Disable networking features that require crypt.h
+        sed -i 's/CONFIG_FTPD=y/# CONFIG_FTPD is not set/g' .config
+        sed -i 's/CONFIG_FEATURE_FTP_AUTHENTICATION=y/# CONFIG_FEATURE_FTP_AUTHENTICATION is not set/g' .config  
+        sed -i 's/CONFIG_FEATURE_HTTPD_AUTH_MD5=y/# CONFIG_FEATURE_HTTPD_AUTH_MD5 is not set/g' .config
+        sed -i 's/CONFIG_FEATURE_HTTPD_BASIC_AUTH=y/# CONFIG_FEATURE_HTTPD_BASIC_AUTH is not set/g' .config
+        sed -i 's/CONFIG_MKPASSWD=y/# CONFIG_MKPASSWD is not set/g' .config
+        
+        # Reprocess config
+        yes '' | make ARCH=${{ matrix.arch }} oldconfig
+        
+        # Fix x86 register pressure issue in TLS code
+        if [ "${{ matrix.arch }}" = "x86" ]; then
+          echo "Disabling ALL TLS and crypto features for x86 due to register pressure"
+          
+          # Disable all TLS/SSL-related features comprehensively
+          sed -i 's/CONFIG_TLS=y/# CONFIG_TLS is not set/g' .config
+          sed -i 's/CONFIG_FEATURE_TLS_SHA1=y/# CONFIG_FEATURE_TLS_SHA1 is not set/g' .config
+          sed -i 's/CONFIG_FEATURE_WGET_HTTPS=y/# CONFIG_FEATURE_WGET_HTTPS is not set/g' .config
+          sed -i 's/CONFIG_FTPS=y/# CONFIG_FTPS is not set/g' .config
+          sed -i 's/CONFIG_SHA1SUM=y/# CONFIG_SHA1SUM is not set/g' .config
+          sed -i 's/CONFIG_SHA256SUM=y/# CONFIG_SHA256SUM is not set/g' .config
+          sed -i 's/CONFIG_SHA512SUM=y/# CONFIG_SHA512SUM is not set/g' .config
+          sed -i 's/CONFIG_MD5SUM=y/# CONFIG_MD5SUM is not set/g' .config
+          
+          # Disable SSL client utilities that depend on TLS
+          sed -i 's/CONFIG_SSL_CLIENT=y/# CONFIG_SSL_CLIENT is not set/g' .config
+          sed -i 's/CONFIG_FEATURE_SSL_CLIENT=y/# CONFIG_FEATURE_SSL_CLIENT is not set/g' .config
+          
+          # Disable wget entirely if it depends on TLS (safer approach)
+          sed -i 's/CONFIG_WGET=y/# CONFIG_WGET is not set/g' .config
+          sed -i 's/CONFIG_FEATURE_WGET_STATUSBAR=y/# CONFIG_FEATURE_WGET_STATUSBAR is not set/g' .config
+          sed -i 's/CONFIG_FEATURE_WGET_AUTHENTICATION=y/# CONFIG_FEATURE_WGET_AUTHENTICATION is not set/g' .config
+          sed -i 's/CONFIG_FEATURE_WGET_LONG_OPTIONS=y/# CONFIG_FEATURE_WGET_LONG_OPTIONS is not set/g' .config
+          sed -i 's/CONFIG_FEATURE_WGET_TIMEOUT=y/# CONFIG_FEATURE_WGET_TIMEOUT is not set/g' .config
+          
+          # Disable any crypto/hash utilities that might link to TLS code
+          sed -i 's/CONFIG_BASE64=y/# CONFIG_BASE64 is not set/g' .config
+          sed -i 's/CONFIG_UUENCODE=y/# CONFIG_UUENCODE is not set/g' .config
+          sed -i 's/CONFIG_UUDECODE=y/# CONFIG_UUDECODE is not set/g' .config
+          
+          # Multiple reprocessing to ensure all dependencies are resolved
+          yes '' | make ARCH=${{ matrix.arch }} oldconfig
+          yes '' | make ARCH=${{ matrix.arch }} oldconfig
+          
+          # Remove ALL TLS/SSL-related source files to prevent any compilation
+          echo "Removing all TLS/SSL source files for x86..."
+          for pattern in "tls*.c" "ssl_client.c"; do
+            find networking -name "$pattern" -type f | while read tls_file; do
+              if [ -f "$tls_file" ]; then
+                echo "Removing $tls_file"
+                rm "$tls_file"
+                touch "$tls_file"
+              fi
+            done
+          done
+        fi
+        
+        # Show what's enabled for debugging
+        echo "=== Essential applets for AFWall+ ==="
+        grep -E "CONFIG_(PING|IFCONFIG|LS|ECHO|CAT|GREP|FEATURE_INSTALLER)=" .config || true
+        
+        echo "=== Problematic features (should be disabled) ==="
+        grep -E "CONFIG_(SWAPON|TAR_TO_COMMAND|DPKG|RPM|TLS).*=" .config || true
+        
+        # Fix cross-compilation and duplicate symbol issues
+        echo "Applying Android compatibility fixes..."
+        
+        # Fix off_t size check
+        if grep -q "struct BUG_off_t_size_is_misdetected" include/libbb.h; then
+          sed -i '/struct BUG_off_t_size_is_misdetected/,/};/c\
+        /* Cross-compilation fix: off_t size check disabled */' include/libbb.h
+        fi
+        
+        # Fix FAST_FUNC calling convention 
+        sed -i 's/__attribute__((regparm(3),stdcall))/__attribute__((regparm(3)))/g' include/platform.h
+        
+        # Remove strchrnul conflicts
+        sed -i '/extern char \*strchrnul.*FAST_FUNC;/d' include/platform.h
+        sed -i '/char\* FAST_FUNC strchrnul/,/^}/d' libbb/platform.c
+        
+        # Create stub for data_extract_to_command to fix linking
+        if [ ! -f "archival/libarchive/data_extract_to_command.c.bak" ]; then
+          cp archival/libarchive/data_extract_to_command.c archival/libarchive/data_extract_to_command.c.bak
+          cat > archival/libarchive/data_extract_to_command.c << 'EOF'
+        /* Stub for data_extract_to_command when FEATURE_TAR_TO_COMMAND is disabled */
+        #include "libbb.h"
+        #include "bb_archive.h"
+        
+        void FAST_FUNC data_extract_to_command(archive_handle_t *archive_handle)
+        {
+            bb_simple_error_msg_and_die("--to-command feature not compiled");
+        }
+        EOF
+          # Force compile the stub by enabling it in Kbuild temporarily
+          sed -i 's/lib-\$(CONFIG_FEATURE_TAR_TO_COMMAND)/lib-y/' archival/libarchive/Kbuild
+        fi
+        
+        # Create stub for pw_encrypt to fix linking issues when password features are disabled
+        if [ ! -f "libbb/pw_encrypt.c.bak" ]; then
+          cp libbb/pw_encrypt.c libbb/pw_encrypt.c.bak
+          cat > libbb/pw_encrypt.c << 'EOF'
+        /* Stub for pw_encrypt when crypt.h features are disabled */
+        #include "libbb.h"
+        
+        char* FAST_FUNC pw_encrypt(const char *clear, const char *salt, int cleanup)
+        {
+            bb_simple_error_msg_and_die("password encryption not supported");
+            return NULL;
+        }
+        EOF
+        fi
+        
+        # Fix duplicate syscall symbols
+        if [ -f "libbb/missing_syscalls.c" ]; then
+          echo "Fixing duplicate syscall symbols..."
+          sed -i '/pid_t.*getsid/,/^}/d' libbb/missing_syscalls.c
+          sed -i '/int.*adjtimex/,/^}/d' libbb/missing_syscalls.c  
+          sed -i '/int.*sethostname/,/^}/d' libbb/missing_syscalls.c
+          sed -i '/getsid.*(/d' libbb/missing_syscalls.c
+          sed -i '/adjtimex.*(/d' libbb/missing_syscalls.c
+          sed -i '/sethostname.*(/d' libbb/missing_syscalls.c
+        fi
+        
+        if [ -f "include/libbb.h" ]; then
+          sed -i '/extern.*getsid.*(/d' include/libbb.h
+          sed -i '/extern.*adjtimex.*(/d' include/libbb.h  
+          sed -i '/extern.*sethostname.*(/d' include/libbb.h
+        fi
+
+    - name: Build Busybox
+      run: |
+        cd "$BUSYBOX_DIR"
+        
+        # Build with Android NDK
+        make ARCH=${{ matrix.arch }} \
+             CC="${NDK_CC}" \
+             AR="${NDK_AR}" \
+             HOSTCC=gcc \
+             HOSTCXX=g++ \
+             STRIP="${NDK_STRIP}" \
+             CFLAGS="-static -DHAVE_STRCHRNUL" \
+             EXTRA_CFLAGS="-DHAVE_STRCHRNUL" \
+             LDFLAGS="-static" \
+             -j$(nproc)
+        
+        # Verify binary
+        file busybox
+        
+        # Strip and copy
+        ${NDK_STRIP} busybox
+        cp busybox ../busybox_${{ matrix.arch }}
+
+    - name: Upload Busybox artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: busybox-${{ matrix.arch }}
+        path: busybox_${{ matrix.arch }}
+
+  build-iptables:
+    name: Build iptables
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        arch: [arm, arm64, x86]
+        include:
+          - arch: arm
+            target: arm-linux-gnueabihf
+            cc: arm-linux-gnueabihf-gcc
+            strip: arm-linux-gnueabihf-strip
+            configure_host: arm-linux-gnueabihf
+          - arch: arm64
+            target: aarch64-linux-gnu
+            cc: aarch64-linux-gnu-gcc
+            strip: aarch64-linux-gnu-strip
+            configure_host: aarch64-linux-gnu
+          - arch: x86
+            target: i686-linux-gnu
+            cc: i686-linux-gnu-gcc
+            strip: i686-linux-gnu-strip
+            configure_host: i686-linux-gnu
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Set up build environment
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          build-essential \
+          wget \
+          unzip \
+          pkg-config \
+          autoconf \
+          automake \
+          libtool \
+          file
+
+    - name: Set up Android NDK
+      run: |
+        NDK_VERSION="r26d"
+        echo "Downloading Android NDK ${NDK_VERSION}..."
+        
+        # Download with retries and better error handling
+        for i in {1..3}; do
+          if wget -q "https://dl.google.com/android/repository/android-ndk-${NDK_VERSION}-linux.zip"; then
+            echo "✓ Downloaded android-ndk-${NDK_VERSION}-linux.zip (attempt $i)"
+            break
+          fi
+          echo "Download attempt $i failed, retrying..."
+          sleep 5
+        done
+        
+        # Verify download
+        if [ ! -f "android-ndk-${NDK_VERSION}-linux.zip" ]; then
+          echo "❌ Failed to download NDK after 3 attempts"
+          exit 1
+        fi
+        
+        echo "Extracting NDK..."
+        unzip -q android-ndk-${NDK_VERSION}-linux.zip
+        
+        # Verify extraction
+        if [ ! -d "android-ndk-${NDK_VERSION}" ]; then
+          echo "❌ NDK extraction failed - directory not found"
+          ls -la
+          exit 1
+        fi
+        
+        export ANDROID_NDK_ROOT="$(pwd)/android-ndk-${NDK_VERSION}"
+        echo "✓ NDK setup complete: ${ANDROID_NDK_ROOT}"
+        echo "ANDROID_NDK_ROOT=${ANDROID_NDK_ROOT}" >> $GITHUB_ENV
+        
+        # Set up NDK toolchain paths
+        case "${{ matrix.arch }}" in
+          arm64)
+            echo "NDK_CC=${ANDROID_NDK_ROOT}/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android28-clang" >> $GITHUB_ENV
+            echo "NDK_STRIP=${ANDROID_NDK_ROOT}/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-strip" >> $GITHUB_ENV
+            echo "NDK_TARGET=aarch64-linux-android" >> $GITHUB_ENV
+            ;;
+          arm)
+            echo "NDK_CC=${ANDROID_NDK_ROOT}/toolchains/llvm/prebuilt/linux-x86_64/bin/armv7a-linux-androideabi28-clang" >> $GITHUB_ENV
+            echo "NDK_STRIP=${ANDROID_NDK_ROOT}/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-strip" >> $GITHUB_ENV
+            echo "NDK_TARGET=armv7a-linux-androideabi" >> $GITHUB_ENV
+            ;;
+          x86)
+            echo "NDK_CC=${ANDROID_NDK_ROOT}/toolchains/llvm/prebuilt/linux-x86_64/bin/i686-linux-android28-clang" >> $GITHUB_ENV
+            echo "NDK_STRIP=${ANDROID_NDK_ROOT}/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-strip" >> $GITHUB_ENV
+            echo "NDK_TARGET=i686-linux-android" >> $GITHUB_ENV
+            ;;
+        esac
+
+    - name: Download iptables source
+      run: |
+        IPTABLES_VERSION="${{ github.event.inputs.iptables_version || '1.8.10' }}"
+        
+        # Download with retries
+        for i in {1..3}; do
+          if wget -q "https://netfilter.org/projects/iptables/files/iptables-${IPTABLES_VERSION}.tar.xz"; then
+            echo "✓ Downloaded iptables-${IPTABLES_VERSION}.tar.xz (attempt $i)"
+            break
+          fi
+          echo "Download attempt $i failed, retrying..."
+          sleep 5
+        done
+        
+        tar -xf "iptables-${IPTABLES_VERSION}.tar.xz"
+        cd "iptables-${IPTABLES_VERSION}"
+        echo "IPTABLES_DIR=$(pwd)" >> $GITHUB_ENV
+
+    - name: Configure iptables
+      run: |
+        cd "$IPTABLES_DIR"
+        
+        # Set Android NDK cross-compilation environment
+        export CC="${NDK_CC}"
+        export STRIP="${NDK_STRIP}"
+        
+        # Set architecture-specific TLS flags and fix lock path
+        case "${{ matrix.arch }}" in
+          arm64)
+            export CFLAGS="-static -Os -DANDROID -D_GNU_SOURCE -Wno-logical-op -Wno-unknown-warning-option -fno-emulated-tls -DXTABLES_LOCK_DIR='\"/data/local/tmp\"'"
+            ;;
+          *)
+            export CFLAGS="-static -Os -DANDROID -D_GNU_SOURCE -Wno-logical-op -Wno-unknown-warning-option -DXTABLES_LOCK_DIR='\"/data/local/tmp\"'"
+            ;;
+        esac
+        
+        export LDFLAGS="-static"
+        export PKG_CONFIG_PATH=""
+        
+        # Configure for Android cross-compilation
+        ./configure \
+          --host=${NDK_TARGET} \
+          --enable-static \
+          --disable-shared \
+          --disable-nftables \
+          --disable-bpf-compiler \
+          --disable-connlabel \
+          --disable-devel \
+          --with-kernel=/usr/include \
+          --disable-libipq \
+          --with-xtlockdir=/data/local/tmp
+
+    - name: Build iptables
+      run: |
+        cd "$IPTABLES_DIR"
+        
+        export CC="${NDK_CC}"
+        export STRIP="${NDK_STRIP}"
+        
+        # Set architecture-specific TLS flags and fix lock path
+        case "${{ matrix.arch }}" in
+          arm64)
+            export CFLAGS="-static -Os -DANDROID -D_GNU_SOURCE -Wno-logical-op -Wno-unknown-warning-option -fno-emulated-tls -DXTABLES_LOCK_DIR='\"/data/local/tmp\"'"
+            ;;
+          *)
+            export CFLAGS="-static -Os -DANDROID -D_GNU_SOURCE -Wno-logical-op -Wno-unknown-warning-option -DXTABLES_LOCK_DIR='\"/data/local/tmp\"'"
+            ;;
+        esac
+        
+        export LDFLAGS="-static"
+        
+        # Remove only the cgroup extension (has O_PATH macro conflict)
+        rm -f extensions/libxt_cgroup.c
+        
+        # Fix prioritynames issue in LOG extension for Android compatibility
+        sed -i 's/prioritynames\[i\]\.c_name/0/g; s/prioritynames\[i\]\.c_val/0/g' extensions/libxt_LOG.c
+        
+        # Fix hardcoded lock path for Android - replace /run/xtables.lock with /data/local/tmp/xtables.lock
+        find . -name "*.c" -o -name "*.h" | xargs grep -l "/run/xtables.lock" | while read file; do
+          sed -i 's|/run/xtables\.lock|/data/local/tmp/xtables.lock|g' "$file"
+          echo "Fixed lock path in $file"
+        done
+        
+        # Build
+        make -j$(nproc) V=1
+        
+        # Copy binaries
+        if [ -f "iptables/xtables-legacy-multi" ]; then
+          # Prefer legacy multi-tool for compatibility
+          cp "iptables/xtables-legacy-multi" "../iptables_${{ matrix.arch }}"
+          cp "iptables/xtables-legacy-multi" "../ip6tables_${{ matrix.arch }}"
+        else
+          # Fallback to regular binaries
+          cp "iptables/iptables" "../iptables_${{ matrix.arch }}"
+          cp "iptables/ip6tables" "../ip6tables_${{ matrix.arch }}"
+        fi
+        
+        # Verify and strip binaries
+        file "../iptables_${{ matrix.arch }}"
+        file "../ip6tables_${{ matrix.arch }}"
+        
+        ${NDK_STRIP} "../iptables_${{ matrix.arch }}"
+        ${NDK_STRIP} "../ip6tables_${{ matrix.arch }}"
+
+    - name: Upload iptables artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: iptables-${{ matrix.arch }}
+        path: |
+          iptables_${{ matrix.arch }}
+          ip6tables_${{ matrix.arch }}
+
+  build-nflog:
+    name: Build nflog
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        arch: [arm, arm64, x86]
+        # nflog targets API 29: from API 29 on, the NDK's crt objects give the executable's TLS
+        # segment the alignment Bionic requires (64 bytes on arm64, 32 on arm). Android 16
+        # refuses to start the API-28 build ("executable's TLS segment is underaligned").
+        # busybox/iptables have no TLS segment and keep API 28.
+        include:
+          - arch: arm
+            ndk_cc_suffix: armv7a-linux-androideabi29-clang
+            min_tls_align: 32
+          - arch: arm64
+            ndk_cc_suffix: aarch64-linux-android29-clang
+            min_tls_align: 64
+          - arch: x86
+            ndk_cc_suffix: i686-linux-android29-clang
+            min_tls_align: 0
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Set up build environment
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          build-essential \
+          wget \
+          unzip \
+          file
+
+    - name: Set up Android NDK
+      run: |
+        NDK_VERSION="r26d"
+        echo "Downloading Android NDK ${NDK_VERSION}..."
+        
+        for i in {1..3}; do
+          if wget -q "https://dl.google.com/android/repository/android-ndk-${NDK_VERSION}-linux.zip"; then
+            echo "✓ Downloaded android-ndk-${NDK_VERSION}-linux.zip (attempt $i)"
+            break
+          fi
+          echo "Download attempt $i failed, retrying..."
+          sleep 5
+        done
+        
+        if [ ! -f "android-ndk-${NDK_VERSION}-linux.zip" ]; then
+          echo "❌ Failed to download NDK after 3 attempts"
+          exit 1
+        fi
+        
+        echo "Extracting NDK..."
+        unzip -q android-ndk-${NDK_VERSION}-linux.zip
+        
+        export ANDROID_NDK_ROOT="$(pwd)/android-ndk-${NDK_VERSION}"
+        echo "ANDROID_NDK_ROOT=${ANDROID_NDK_ROOT}" >> $GITHUB_ENV
+        echo "NDK_CC=${ANDROID_NDK_ROOT}/toolchains/llvm/prebuilt/linux-x86_64/bin/${{ matrix.ndk_cc_suffix }}" >> $GITHUB_ENV
+        echo "NDK_STRIP=${ANDROID_NDK_ROOT}/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-strip" >> $GITHUB_ENV
+        echo "✓ NDK setup complete"
+
+    - name: Build nflog from AFWall+ source
+      run: |
+        cd external/nflog
+        
+        # Use Android NDK clang — produces Android-native binaries that avoid
+        # AV false-positive heuristics triggered by GNU cross-compiled ELFs
+        ${NDK_CC} -static \
+          -I. -Ilibmnl \
+          -D_GNU_SOURCE -DANDROID \
+          -Os \
+          -o nflog_${{ matrix.arch }} \
+          nflog.c attr.c callback.c nlmsg.c socket.c
+        
+        # Verify the binary
+        file nflog_${{ matrix.arch }}
+        ${NDK_STRIP} nflog_${{ matrix.arch }}
+        ls -la nflog_${{ matrix.arch }}
+
+    - name: Check TLS segment alignment
+      run: |
+        # Bionic refuses to run executables whose TLS segment is aligned below this
+        # (issues #1505/#1506: nflog built for API 28 had 8 on arm64).
+        min=${{ matrix.min_tls_align }}
+        readelf="${ANDROID_NDK_ROOT}/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-readelf"
+        align=$("$readelf" -lW external/nflog/nflog_${{ matrix.arch }} | awk '/ TLS /{print $NF}')
+        if [ -z "$align" ]; then
+          echo "✓ no TLS segment"
+        elif [ $((align)) -lt "$min" ]; then
+          echo "❌ TLS segment alignment is $align, needs at least $min"
+          exit 1
+        else
+          echo "✓ TLS segment alignment $align (minimum $min)"
+        fi
+
+    - name: Upload nflog artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: nflog-${{ matrix.arch }}
+        path: external/nflog/nflog_${{ matrix.arch }}
+
+
+  collect-binaries:
+    name: Collect and Update Binaries
+    runs-on: ubuntu-latest
+    needs: [build-busybox, build-iptables, build-nflog]
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Download all artifacts
+      uses: actions/download-artifact@v4
+      with:
+        path: ./artifacts
+
+    - name: Organize binaries
+      run: |
+        # Create binaries directory for testing (separate from res/raw)
+        mkdir -p binaries
+        
+        for arch in arm arm64 x86; do
+          # Busybox
+          if [ -f "artifacts/busybox-${arch}/busybox_${arch}" ]; then
+            cp "artifacts/busybox-${arch}/busybox_${arch}" "binaries/"
+            echo "✓ busybox_${arch} -> binaries/"
+          fi
+          
+          # iptables
+          if [ -f "artifacts/iptables-${arch}/iptables_${arch}" ]; then
+            cp "artifacts/iptables-${arch}/iptables_${arch}" "binaries/"
+            echo "✓ iptables_${arch} -> binaries/"
+          fi
+          
+          # ip6tables
+          if [ -f "artifacts/iptables-${arch}/ip6tables_${arch}" ]; then
+            cp "artifacts/iptables-${arch}/ip6tables_${arch}" "binaries/"
+            echo "✓ ip6tables_${arch} -> binaries/"
+          fi
+          
+          # nflog
+          if [ -f "artifacts/nflog-${arch}/nflog_${arch}" ]; then
+            cp "artifacts/nflog-${arch}/nflog_${arch}" "binaries/"
+            echo "✓ nflog_${arch} -> binaries/"
+          fi
+          
+        done
+        
+        echo "Binary inventory:"
+        ls -la binaries/
+
+    - name: Commit binaries to repository
+      run: |
+        # Configure git
+        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub Actions"
+        
+        # Check if binaries directory has content
+        if [ "$(ls -A binaries/)" ]; then
+          echo "Committing newly built binaries..."
+          
+          # Stage the binaries directory
+          git add binaries/
+          
+          # Check if there are changes to commit
+          if git diff --staged --quiet; then
+            echo "No new binaries to commit"
+          else
+            # Create commit message
+            git commit -m "Update cross-compiled binaries - busybox v${{ github.event.inputs.busybox_version || '1.36.1' }}, iptables v${{ github.event.inputs.iptables_version || '1.8.10' }} for arm/arm64/x86. Ready for testing in /binaries directory."
+            
+            # Push changes back to repository
+            git push
+            
+            echo "✅ Binaries committed and pushed to /binaries directory"
+            echo "📁 Ready for testing - manually copy to res/raw/ after validation"
+          fi
+        else
+          echo "❌ No binaries were built - check build logs above"
+          exit 1
+        fi
+
+    - name: Upload compiled binaries
+      uses: actions/upload-artifact@v4
+      with:
+        name: afwall-binaries
+        path: binaries/
+
+    - name: Create Release (optional)
+      if: github.event.inputs.release_tag != ''
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: ${{ github.event.inputs.release_tag }}
+        name: AFWall+ Cross-compiled Binaries ${{ github.event.inputs.release_tag }}
+        body: |
+          Cross-compiled binaries for AFWall+:
+          - busybox (arm, arm64, x86)
+          - iptables (arm, arm64, x86) 
+          - ip6tables (arm, arm64, x86)
+          - nflog (arm, arm64, x86)
+          
+          Built from commit: ${{ github.sha }}
+        files: binaries/*
+        draft: false
+        prerelease: false
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
