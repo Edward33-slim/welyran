@@ -270,31 +270,10 @@ public class ToggleWidgetActivity extends Activity {
 
     private void startAction(final int i) {
         actionType = i;
-        if (i == ACTION_DISABLE && G.enableConfirm()) {
-            confirmDisableFromWidget();
-            return;
-        }
         continueActionAfterConfirmation();
     }
 
-    private void confirmDisableFromWidget() {
-        new MaterialDialog.Builder(this)
-                .title(R.string.confirmMsg)
-                .cancelable(false)
-                .positiveText(R.string.Yes)
-                .negativeText(R.string.No)
-                .onPositive((dialog, which) -> {
-                    Log.i(Api.TAG, "Widget firewall disable confirmed");
-                    dialog.dismiss();
-                    continueActionAfterConfirmation();
-                })
-                .onNegative((dialog, which) -> {
-                    Log.i(Api.TAG, "Widget firewall disable canceled");
-                    dialog.dismiss();
-                    finish();
-                })
-                .show();
-    }
+
 
     private void continueActionAfterConfirmation() {
         security.passCheck(allowed -> {
