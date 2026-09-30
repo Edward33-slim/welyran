@@ -1185,19 +1185,6 @@ if (G.showFilter()) {
             search(item);
             return true;
         } else {
-                if (ActivityCompat.checkSelfPermission(this, Manifest.permission.READ_EXTERNAL_STORAGE)
-                        != PackageManager.PERMISSION_GRANTED) {
-                    // permissions have not been granted.
-                    ActivityCompat.requestPermissions(MainActivity.this,
-                            new String[]{Manifest.permission.READ_EXTERNAL_STORAGE},
-                            MY_PERMISSIONS_REQUEST_READ_STORAGE);
-
-                } else {
-                    showImportDialog();
-                }
-            }
-            return true;
-        } else {
             return super.onOptionsItemSelected(item);
         }
     }
