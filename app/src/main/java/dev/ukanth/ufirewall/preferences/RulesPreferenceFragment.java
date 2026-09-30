@@ -38,15 +38,6 @@ public class RulesPreferenceFragment extends PreferenceFragment implements
         } catch (Exception e) {
         }
 
-        //make sure Roaming is disable in Wifi-only Tablets
-        if (!Api.isMobileNetworkSupported(getActivity())) {
-            CheckBoxPreference roamPreference = (CheckBoxPreference) findPreference("enableRoam");
-            roamPreference.setChecked(false);
-            roamPreference.setEnabled(false);
-        } else {
-            CheckBoxPreference roamPreference = (CheckBoxPreference) findPreference("enableRoam");
-            roamPreference.setEnabled(true);
-        }
     }
 
     private void updateRuleStatus() {
