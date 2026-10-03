@@ -1,1 +1,64 @@
+name: Delete All Actions History
 
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: "Type DELETE-ACTIONS to confirm"
+        required: true
+        type: string
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  delete-history:
+    if: ${{ inputs.confirm == 'DELETE-ACTIONS' }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Delete all workflow runs
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -e
+
+          while true; do
+            RUNS=$(gh api \
+              --paginate \
+              "/repos/$REPO/actions/runs?per_page=100" \
+              --jq '.workflow_runs[].id')
+
+            if [ -z "$RUNS" ]; then
+              echo "No workflow runs remain."
+              break
+            fi
+
+            for RUN_ID in $RUNS; do
+              echo "Deleting workflow run: $RUN_ID"
+              gh api \
+                --method DELETE \
+                "/repos/$REPO/actions/runs/$RUN_ID" || true
+            done
+          done
+
+      - name: Delete all artifacts
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          gh api \
+            --paginate \
+            "/repos/$REPO/actions/artifacts?per_page=100" \
+            --jq '.artifacts[].id' |
+          while read -r ID; do
+            [ -z "$ID" ] && continue
+            echo "Deleting artifact: $ID"
+            gh api \
+              --method DELETE \
+              "/repos/$REPO/actions/artifacts/$ID" || true
+          done
