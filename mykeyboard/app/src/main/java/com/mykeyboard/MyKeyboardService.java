@@ -132,10 +132,14 @@ public class MyKeyboardService extends InputMethodService {
 
             if (!current.isEmpty()) {
                 ic.deleteSurroundingText(current.length(), 0);
+                String completedContext = context.substring(0, context.length() - current.length())
+                        + value + " ";
+                ic.commitText(value + " ", 1);
+                predictor.learnText(completedContext);
+            } else {
+                ic.commitText(value + " ", 1);
+                predictor.learnText(context + value + " ");
             }
-
-            ic.commitText(value + " ", 1);
-            predictor.learnText(context + value + " ");
             updateSuggestions();
         });
 
@@ -193,6 +197,7 @@ public class MyKeyboardService extends InputMethodService {
         addSpecial(row, arabic ? "EN" : "ع", 0.85f, v -> {
             arabic = !arabic;
             buildKeyboard();
+            setInputView(root);
         });
 
         addSpecial(row, "مسافة", 3.3f, v -> commit(" "));
