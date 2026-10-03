@@ -3,6 +3,10 @@ package com.mykeyboard;
 import android.content.Context;
 import android.content.SharedPreferences;
 
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
@@ -15,6 +19,12 @@ import java.util.Set;
 
 public final class SuggestionEngine {
     private final SharedPreferences prefs;
+    private final Context appContext;
+
+    // Compact static Arabic frequency dictionary. The local model then adds
+    // personalized word, bigram and trigram boosts on top of this baseline.
+    private final List<String> arabicFrequencyWords = new ArrayList<>();
+    private final Map<String, Integer> arabicFrequencyRanks = new HashMap<>();
 
     private final List<String> arabicWords = Arrays.asList(
             "أنا","أنت","أنتِ","أنتما","أنتم","أنتن","هو","هي","هما","هم","هن","نحن",
@@ -82,9 +92,35 @@ public final class SuggestionEngine {
     private final Map<String, String[]> englishTrigrams = new HashMap<>();
 
     public SuggestionEngine(Context context) {
-        prefs = context.getApplicationContext()
-                .getSharedPreferences("prediction", Context.MODE_PRIVATE);
+        appContext = context.getApplicationContext();
+        prefs = appContext.getSharedPreferences("prediction", Context.MODE_PRIVATE);
+        loadArabicFrequencyDictionary();
         initBigrams();
+    }
+
+    private void loadArabicFrequencyDictionary() {
+        try (BufferedReader reader = new BufferedReader(
+                new InputStreamReader(
+                        appContext.getAssets().open("ar_frequency.txt"),
+                        StandardCharsets.UTF_8))) {
+            String line;
+            int rank = 0;
+            Set<String> seen = new LinkedHashSet<>();
+            while ((line = reader.readLine()) != null && rank < 1500) {
+                String word = line.trim();
+                if (word.isEmpty() || !isArabicWord(word)) continue;
+
+                String normalized = normalize(word);
+                if (normalized.isEmpty() || !seen.add(normalized)) continue;
+
+                arabicFrequencyWords.add(word);
+                arabicFrequencyRanks.put(normalized, 200000 - rank);
+                rank++;
+            }
+        } catch (IOException ignored) {
+            // The curated built-in dictionary remains available if the asset
+            // cannot be loaded.
+        }
     }
 
     private void initBigrams() {
@@ -328,10 +364,18 @@ public final class SuggestionEngine {
                 addCandidate(candidates, partial, word);
             }
 
+            if (arabic) {
+                for (String word : arabicFrequencyWords) {
+                    addCandidate(candidates, partial, word);
+                }
+            }
+
+            // User-learned vocabulary stays local and is filtered by language.
             for (String key : prefs.getAll().keySet()) {
-                if (key.startsWith("word.")) {
-                    String word = key.substring(5);
-                    if (!word.isEmpty()) addCandidate(candidates, partial, word);
+                if (!key.startsWith("word.")) continue;
+                String word = key.substring(5);
+                if (!word.isEmpty() && matchesLanguage(word, arabic)) {
+                    addCandidate(candidates, partial, word);
                 }
             }
 
@@ -367,6 +411,11 @@ public final class SuggestionEngine {
                 List<Ranked> coldStart = new ArrayList<>();
                 for (String word : (arabic ? arabicWords : englishWords)) {
                     coldStart.add(new Ranked(word, Math.max(1, wordFrequency(word))));
+                }
+                if (arabic) {
+                    for (String word : arabicFrequencyWords) {
+                        coldStart.add(new Ranked(word, Math.max(1, wordFrequency(word))));
+                    }
                 }
                 coldStart.sort(Comparator.comparingInt((Ranked r) -> r.score).reversed());
                 for (Ranked r : coldStart) {
@@ -485,7 +534,10 @@ public final class SuggestionEngine {
         for (Map.Entry<String, ?> e : prefs.getAll().entrySet()) {
             if (!e.getKey().startsWith("word.")) continue;
             String word = e.getKey().substring(5);
-            if (!word.isEmpty()) ranked.add(new Ranked(word, toInt(e.getValue())));
+            if (!word.isEmpty() && matchesLanguage(word, arabic)) {
+                int learned = toInt(e.getValue());
+                ranked.add(new Ranked(word, 1000000 + learned * 10000 + builtInFrequency(word)));
+            }
         }
 
         ranked.sort(Comparator.comparingInt((Ranked r) -> r.score).reversed());
@@ -498,7 +550,52 @@ public final class SuggestionEngine {
     }
 
     private int wordFrequency(String word) {
-        return prefs.getInt("word." + normalizeKey(word), 0);
+        int learned = prefs.getInt("word." + normalizeKey(word), 0);
+        return learned * 10000 + builtInFrequency(word);
+    }
+
+    private int builtInFrequency(String word) {
+        int best = 0;
+        String normalized = normalize(word);
+
+        Integer arabicRank = arabicFrequencyRanks.get(normalized);
+        if (arabicRank != null) best = Math.max(best, arabicRank);
+
+        int index = arabicWords.indexOf(word);
+        if (index >= 0) best = Math.max(best, 5000 - index);
+
+        int englishIndex = englishWords.indexOf(word);
+        if (englishIndex >= 0) best = Math.max(best, 5000 - englishIndex);
+
+        return best;
+    }
+
+    private boolean matchesLanguage(String word, boolean arabic) {
+        if (arabic) return isArabicWord(word);
+        for (int i = 0; i < word.length(); i++) {
+            char c = word.charAt(i);
+            if (Character.isLetter(c) && c < 0x0600) return true;
+        }
+        return false;
+    }
+
+    private boolean isArabicWord(String word) {
+        if (word == null || word.isEmpty()) return false;
+        boolean found = false;
+        for (int i = 0; i < word.length(); i++) {
+            char c = word.charAt(i);
+            if (Character.isWhitespace(c)) return false;
+            if ((c >= '\u0600' && c <= '\u06FF')
+                    || (c >= '\u0750' && c <= '\u077F')
+                    || (c >= '\u08A0' && c <= '\u08FF')
+                    || (c >= '\uFB50' && c <= '\uFDFF')
+                    || (c >= '\uFE70' && c <= '\uFEFF')) {
+                found = true;
+            } else if (Character.isLetter(c)) {
+                return false;
+            }
+        }
+        return found;
     }
 
     private String normalize(String value) {
