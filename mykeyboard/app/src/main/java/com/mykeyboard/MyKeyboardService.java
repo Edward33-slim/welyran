@@ -1,117 +1,299 @@
 package com.mykeyboard;
 
+import android.content.ClipData;
+import android.content.ClipboardManager;
+import android.content.Context;
 import android.graphics.Color;
+import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.inputmethodservice.InputMethodService;
 import android.view.Gravity;
 import android.view.View;
-import android.view.ViewGroup;
 import android.view.inputmethod.EditorInfo;
 import android.view.inputmethod.InputConnection;
 import android.widget.Button;
 import android.widget.LinearLayout;
+import android.widget.TextView;
+
+import java.util.Arrays;
+import java.util.List;
 
 public class MyKeyboardService extends InputMethodService {
-    private boolean shifted = false;
-    private boolean symbols = false;
+    private boolean arabic = true;
+    private boolean shift = false;
 
-    @Override public View onCreateInputView() {
-        LinearLayout keyboard = new LinearLayout(this);
-        keyboard.setOrientation(LinearLayout.VERTICAL);
-        keyboard.setPadding(5, 5, 5, 5);
-        keyboard.setBackgroundColor(Color.rgb(45, 45, 45));
+    private LinearLayout root;
+    private LinearLayout suggestions;
+    private TextView currentWord;
+    private SuggestionEngine predictor;
 
-        if (symbols) {
-            addRow(keyboard, new String[]{"1","2","3","4","5","6","7","8","9","0"});
-            addRow(keyboard, new String[]{"@","#","$","%","&","*","-","+","(",")"});
-        } else {
-            addRow(keyboard, new String[]{"q","w","e","r","t","y","u","i","o","p"});
-            addRow(keyboard, new String[]{"a","s","d","f","g","h","j","k","l"});
-            addRow(keyboard, new String[]{"⇧","z","x","c","v","b","n","m","⌫"});
-        }
+    private static final String[] EN = {
+            "qwertyuiop",
+            "asdfghjkl",
+            "zxcvbnm"
+    };
 
-        LinearLayout bottom = new LinearLayout(this);
-        bottom.setGravity(Gravity.CENTER);
+    private static final String[] AR = {
+            "ضصثقفغعهخحجد",
+            "شسيبلاتنمكط",
+            "ئءؤرلاىةوزظ"
+    };
 
-        addSpecial(bottom, symbols ? "ABC" : "?123", 1.25f, v -> {
-            symbols = !symbols;
-            setInputView(onCreateInputView());
-        });
-        addSpecial(bottom, "🌐", 0.8f, v -> switchToNextInputMethod(false));
-        addSpecial(bottom, "space", 3.5f, v -> commit(" "));
-        addSpecial(bottom, "↵", 1.2f, v -> {
-            InputConnection ic = getCurrentInputConnection();
-            if (ic != null) ic.performEditorAction(EditorInfo.IME_ACTION_DONE);
-        });
-
-        keyboard.addView(bottom, new LinearLayout.LayoutParams(-1, dp(52)));
-        return keyboard;
+    @Override
+    public View onCreateInputView() {
+        predictor = new SuggestionEngine(this);
+        buildKeyboard();
+        return root;
     }
 
-    private void addRow(LinearLayout parent, String[] keys) {
+    @Override
+    public void onStartInput(EditorInfo attribute, boolean restarting) {
+        super.onStartInput(attribute, restarting);
+        shift = false;
+    }
+
+    @Override
+    public void onUpdateSelection(int oldSelStart, int oldSelEnd,
+                                  int newSelStart, int newSelEnd,
+                                  int candidatesStart, int candidatesEnd) {
+        super.onUpdateSelection(oldSelStart, oldSelEnd, newSelStart, newSelEnd,
+                candidatesStart, candidatesEnd);
+        updateSuggestions();
+    }
+
+    private void buildKeyboard() {
+        root = new LinearLayout(this);
+        root.setOrientation(LinearLayout.VERTICAL);
+        root.setPadding(dp(4), dp(4), dp(4), dp(5));
+        root.setBackgroundColor(Color.rgb(29, 30, 37));
+
+        buildSuggestionToolbar();
+        buildSuggestionRow();
+        addNumberRow();
+
+        String[] rows = arabic ? AR : EN;
+        for (String row : rows) {
+            String[] keys = new String[row.length()];
+            for (int i = 0; i < row.length(); i++) {
+                keys[i] = String.valueOf(row.charAt(i));
+            }
+            addLetterRow(keys);
+        }
+
+        buildBottomRow();
+        updateSuggestions();
+    }
+
+    private void buildSuggestionToolbar() {
+        LinearLayout bar = new LinearLayout(this);
+        bar.setGravity(Gravity.CENTER_VERTICAL);
+        bar.setPadding(dp(2), 0, dp(2), 0);
+
+        addTool(bar, "•••", 0.9f, v -> {});
+        addTool(bar, "ⓘ", 0.9f, v -> {});
+        addTool(bar, "文\nA", 1.0f, v -> {});
+        addTool(bar, "▣", 1.0f, v -> pasteClipboard());
+        addTool(bar, "☺", 1.0f, v -> {});
+        addTool(bar, "GIF", 1.0f, v -> {});
+        addTool(bar, "⌕", 1.0f, v -> {});
+
+        root.addView(bar, new LinearLayout.LayoutParams(-1, dp(46)));
+    }
+
+    private void buildSuggestionRow() {
+        suggestions = new LinearLayout(this);
+        suggestions.setGravity(Gravity.CENTER_VERTICAL);
+        suggestions.setPadding(dp(5), 0, dp(5), 0);
+        root.addView(suggestions, new LinearLayout.LayoutParams(-1, dp(44)));
+
+        currentWord = new TextView(this);
+        currentWord.setText("");
+        currentWord.setTextColor(Color.LTGRAY);
+        currentWord.setTextSize(12);
+        currentWord.setGravity(Gravity.CENTER);
+    }
+
+    private void updateSuggestions() {
+        if (suggestions == null || predictor == null) return;
+
+        suggestions.removeAllViews();
+
+        InputConnection ic = getCurrentInputConnection();
+        if (ic == null) return;
+
+        CharSequence before = ic.getTextBeforeCursor(80, 0);
+        String context = before == null ? "" : before.toString();
+
+        List<String> values = predictor.suggest(context, arabic);
+        for (String value : values) {
+            addSuggestion(suggestions, value);
+        }
+    }
+
+    private void addSuggestion(LinearLayout row, String value) {
+        TextView t = new TextView(this);
+        t.setText(value);
+        t.setTextColor(Color.WHITE);
+        t.setTextSize(16);
+        t.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        t.setGravity(Gravity.CENTER);
+        t.setPadding(dp(8), 0, dp(8), 0);
+        t.setOnClickListener(v -> {
+            InputConnection ic = getCurrentInputConnection();
+            if (ic == null) return;
+
+            String word = value;
+            CharSequence before = ic.getTextBeforeCursor(80, 0);
+            String context = before == null ? "" : before.toString();
+            String partial = predictor.currentWord(context);
+
+            if (!partial.isEmpty()) {
+                ic.deleteSurroundingText(partial.length(), 0);
+            }
+            ic.commitText(word + " ", 1);
+            updateSuggestions();
+        });
+
+        LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(0, -1, 1f);
+        p.setMargins(dp(2), dp(2), dp(2), dp(2));
+        row.addView(t, p);
+    }
+
+    private void addNumberRow() {
+        String[] numbers = {"١","٢","٣","٤","٥","٦","٧","٨","٩","٠"};
         LinearLayout row = new LinearLayout(this);
         row.setGravity(Gravity.CENTER);
-        for (String key : keys) {
-            final String value = key;
-            addKey(row, display(value), 1f, v -> handleKey(value));
-        }
-        parent.addView(row, new LinearLayout.LayoutParams(-1, dp(52)));
+        for (String n : numbers) addKey(row, n, 1f);
+        root.addView(row, new LinearLayout.LayoutParams(-1, dp(48)));
     }
 
-    private String display(String key) {
-        return shifted && key.length() == 1 && Character.isLetter(key.charAt(0))
-                ? key.toUpperCase() : key;
+    private void addLetterRow(String[] keys) {
+        LinearLayout row = new LinearLayout(this);
+        row.setGravity(Gravity.CENTER);
+        for (String key : keys) addKey(row, key, 1f);
+        root.addView(row, new LinearLayout.LayoutParams(-1, dp(55)));
     }
 
-    private void handleKey(String key) {
-        if ("⇧".equals(key)) {
-            shifted = !shifted;
-            setInputView(onCreateInputView());
-            return;
-        }
-        if ("⌫".equals(key)) {
-            InputConnection ic = getCurrentInputConnection();
-            if (ic != null) ic.deleteSurroundingText(1, 0);
-            return;
-        }
-        commit(display(key));
-        if (shifted) {
-            shifted = false;
-            setInputView(onCreateInputView());
-        }
+    private void buildBottomRow() {
+        LinearLayout row = new LinearLayout(this);
+        row.setGravity(Gravity.CENTER);
+
+        addSpecial(row, "123", 0.95f, v -> {});
+        addSpecial(row, "☺", 0.75f, v -> {});
+        addSpecial(row, "،", 0.55f, v -> commit("،"));
+        addSpecial(row, arabic ? "EN" : "ع", 0.9f, v -> {
+            arabic = !arabic;
+            shift = false;
+            buildKeyboard();
+        });
+        addSpecial(row, "مسافة", 3.4f, v -> commit(" "));
+        addSpecial(row, ".", 0.55f, v -> commit(arabic ? "،" : "."));
+        addSpecial(row, "⌫", 0.9f, v -> deleteOne());
+        addSpecial(row, "↵", 0.9f, v -> enter());
+
+        root.addView(row, new LinearLayout.LayoutParams(-1, dp(56)));
+    }
+
+    private void addKey(LinearLayout row, String label, float weight) {
+        Button b = new Button(this);
+        String shown = shift && !arabic ? label.toUpperCase() : label;
+        b.setText(shown);
+        b.setTextSize(18);
+        b.setTextColor(Color.WHITE);
+        b.setAllCaps(false);
+        b.setGravity(Gravity.CENTER);
+        b.setPadding(0, 0, 0, 0);
+        b.setBackground(keyBackground(false));
+        b.setOnClickListener(v -> commit(b.getText().toString()));
+
+        LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(0, -1, weight);
+        p.setMargins(dp(2), dp(2), dp(2), dp(2));
+        row.addView(b, p);
+    }
+
+    private void addSpecial(LinearLayout row, String label, float weight, View.OnClickListener click) {
+        Button b = new Button(this);
+        b.setText(label);
+        b.setTextSize(label.equals("مسافة") ? 13 : 15);
+        b.setTextColor(Color.WHITE);
+        b.setAllCaps(false);
+        b.setGravity(Gravity.CENTER);
+        b.setPadding(0, 0, 0, 0);
+        b.setBackground(keyBackground(true));
+        b.setOnClickListener(click);
+
+        LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(0, -1, weight);
+        p.setMargins(dp(2), dp(2), dp(2), dp(2));
+        row.addView(b, p);
+    }
+
+    private void addTool(LinearLayout row, String label, float weight, View.OnClickListener click) {
+        TextView b = new TextView(this);
+        b.setText(label);
+        b.setTextColor(Color.LTGRAY);
+        b.setTextSize(label.contains("GIF") ? 11 : 19);
+        b.setGravity(Gravity.CENTER);
+        b.setOnClickListener(click);
+
+        LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(0, -1, weight);
+        row.addView(b, p);
+    }
+
+    private GradientDrawable keyBackground(boolean special) {
+        GradientDrawable bg = new GradientDrawable();
+        bg.setColor(special ? Color.rgb(64, 65, 75) : Color.rgb(57, 58, 68));
+        bg.setCornerRadius(dp(7));
+        return bg;
     }
 
     private void commit(String text) {
         InputConnection ic = getCurrentInputConnection();
         if (ic != null) ic.commitText(text, 1);
+        if (shift) {
+            shift = false;
+            buildKeyboard();
+        } else {
+            updateSuggestions();
+        }
     }
 
-    private void addKey(LinearLayout row, String text, float weight, View.OnClickListener listener) {
-        Button b = makeButton(text);
-        b.setOnClickListener(listener);
-        row.addView(b, new LinearLayout.LayoutParams(0, dp(48), weight));
+    private void deleteOne() {
+        InputConnection ic = getCurrentInputConnection();
+        if (ic != null) {
+            ic.deleteSurroundingText(1, 0);
+            updateSuggestions();
+        }
     }
 
-    private void addSpecial(LinearLayout row, String text, float weight, View.OnClickListener listener) {
-        addKey(row, text, weight, listener);
+    private void pasteClipboard() {
+        ClipboardManager cm = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+        if (cm == null || !cm.hasPrimaryClip()) return;
+
+        ClipData data = cm.getPrimaryClip();
+        if (data == null || data.getItemCount() == 0) return;
+
+        CharSequence text = data.getItemAt(0).coerceToText(this);
+        if (text != null) commit(text.toString());
     }
 
-    private Button makeButton(String text) {
-        Button b = new Button(this);
-        b.setText(text);
-        b.setTextSize(16);
-        b.setTextColor(Color.WHITE);
-        b.setAllCaps(false);
-        b.setGravity(Gravity.CENTER);
-        b.setPadding(0, 0, 0, 0);
-        GradientDrawable bg = new GradientDrawable();
-        bg.setColor(Color.rgb(80, 80, 80));
-        bg.setCornerRadius(dp(6));
-        b.setBackground(bg);
-        return b;
+    private void enter() {
+        InputConnection ic = getCurrentInputConnection();
+        if (ic == null) return;
+
+        EditorInfo info = getCurrentInputEditorInfo();
+        int action = info == null ? EditorInfo.IME_ACTION_NONE
+                : info.imeOptions & EditorInfo.IME_MASK_ACTION;
+
+        if (action != EditorInfo.IME_ACTION_NONE &&
+                action != EditorInfo.IME_ACTION_UNSPECIFIED) {
+            ic.performEditorAction(action);
+        } else {
+            ic.commitText("\n", 1);
+        }
+        updateSuggestions();
     }
 
     private int dp(int value) {
-        return (int)(value * getResources().getDisplayMetrics().density + 0.5f);
+        return Math.round(value * getResources().getDisplayMetrics().density);
     }
 }
