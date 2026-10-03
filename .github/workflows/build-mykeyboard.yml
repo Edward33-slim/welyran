@@ -1,0 +1,41 @@
+name: Build mykeyboard APK
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'mykeyboard/**'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Setup Gradle 8.7
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          gradle-version: '8.7'
+
+      - name: Build release APK
+        working-directory: mykeyboard
+        run: gradle assembleRelease --no-daemon
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: mykeyboard-release
+          path: mykeyboard/app/build/outputs/apk/release/app-release.apk
