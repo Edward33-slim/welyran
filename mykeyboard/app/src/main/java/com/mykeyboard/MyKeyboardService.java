@@ -15,7 +15,6 @@ import android.widget.Button;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
-import java.util.Arrays;
 import java.util.List;
 
 public class MyKeyboardService extends InputMethodService {
@@ -24,19 +23,20 @@ public class MyKeyboardService extends InputMethodService {
 
     private LinearLayout root;
     private LinearLayout suggestions;
-    private TextView currentWord;
     private SuggestionEngine predictor;
 
+    // Rows are intentionally reversed so the keys that were on the right
+    // appear on the left, matching the requested mirrored layout.
     private static final String[] EN = {
-            "qwertyuiop",
-            "asdfghjkl",
-            "zxcvbnm"
+            "poiuytrewq",
+            "lkjhgfdsa",
+            "mnbvcxz"
     };
 
     private static final String[] AR = {
-            "ضصثقفغعهخحجد",
-            "شسيبلاتنمكط",
-            "ئءؤرلاىةوزظ"
+            "دجحخهعغفقثصض",
+            "طكنمئتايسش",
+            "ظوزةىلارؤءئ"
     };
 
     @Override
@@ -105,12 +105,6 @@ public class MyKeyboardService extends InputMethodService {
         suggestions.setGravity(Gravity.CENTER_VERTICAL);
         suggestions.setPadding(dp(5), 0, dp(5), 0);
         root.addView(suggestions, new LinearLayout.LayoutParams(-1, dp(44)));
-
-        currentWord = new TextView(this);
-        currentWord.setText("");
-        currentWord.setTextColor(Color.LTGRAY);
-        currentWord.setTextSize(12);
-        currentWord.setGravity(Gravity.CENTER);
     }
 
     private void updateSuggestions() {
@@ -121,7 +115,7 @@ public class MyKeyboardService extends InputMethodService {
         InputConnection ic = getCurrentInputConnection();
         if (ic == null) return;
 
-        CharSequence before = ic.getTextBeforeCursor(80, 0);
+        CharSequence before = ic.getTextBeforeCursor(120, 0);
         String context = before == null ? "" : before.toString();
 
         List<String> values = predictor.suggest(context, arabic);
@@ -142,15 +136,16 @@ public class MyKeyboardService extends InputMethodService {
             InputConnection ic = getCurrentInputConnection();
             if (ic == null) return;
 
-            String word = value;
-            CharSequence before = ic.getTextBeforeCursor(80, 0);
+            CharSequence before = ic.getTextBeforeCursor(120, 0);
             String context = before == null ? "" : before.toString();
             String partial = predictor.currentWord(context);
 
             if (!partial.isEmpty()) {
                 ic.deleteSurroundingText(partial.length(), 0);
             }
-            ic.commitText(word + " ", 1);
+
+            ic.commitText(value + " ", 1);
+            predictor.learnText(value + " ");
             updateSuggestions();
         });
 
@@ -160,7 +155,7 @@ public class MyKeyboardService extends InputMethodService {
     }
 
     private void addNumberRow() {
-        String[] numbers = {"١","٢","٣","٤","٥","٦","٧","٨","٩","٠"};
+        String[] numbers = {"٠","٩","٨","٧","٦","٥","٤","٣","٢","١"};
         LinearLayout row = new LinearLayout(this);
         row.setGravity(Gravity.CENTER);
         for (String n : numbers) addKey(row, n, 1f);
@@ -248,7 +243,18 @@ public class MyKeyboardService extends InputMethodService {
 
     private void commit(String text) {
         InputConnection ic = getCurrentInputConnection();
-        if (ic != null) ic.commitText(text, 1);
+        if (ic == null) return;
+
+        CharSequence before = ic.getTextBeforeCursor(120, 0);
+        String context = before == null ? "" : before.toString();
+
+        ic.commitText(text, 1);
+
+        // Learn completed words and useful phrases locally.
+        if (" ".equals(text) || text.indexOf('\n') >= 0) {
+            predictor.learnText(context + text);
+        }
+
         if (shift) {
             shift = false;
             buildKeyboard();
@@ -280,16 +286,8 @@ public class MyKeyboardService extends InputMethodService {
         InputConnection ic = getCurrentInputConnection();
         if (ic == null) return;
 
-        EditorInfo info = getCurrentInputEditorInfo();
-        int action = info == null ? EditorInfo.IME_ACTION_NONE
-                : info.imeOptions & EditorInfo.IME_MASK_ACTION;
-
-        if (action != EditorInfo.IME_ACTION_NONE &&
-                action != EditorInfo.IME_ACTION_UNSPECIFIED) {
-            ic.performEditorAction(action);
-        } else {
-            ic.commitText("\n", 1);
-        }
+        // Always insert a real newline. Do not submit/search/next.
+        ic.commitText("\n", 1);
         updateSuggestions();
     }
 
