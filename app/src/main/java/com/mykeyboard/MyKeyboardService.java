@@ -36,7 +36,7 @@ public class MyKeyboardService extends InputMethodService {
     private static final String[] AR = {
             "دجحخهعغفقثصض",
             "طكنمئتايسش",
-            "ظوزوةىلارؤءئ"
+            "ظوزةىلارؤءئ"
     };
 
     @Override
