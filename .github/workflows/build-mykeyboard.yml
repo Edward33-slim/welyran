@@ -44,13 +44,15 @@ jobs:
 
       - name: Build release APK
         working-directory: mykeyboard
-        run: |
-          gradle assembleRelease --no-daemon --stacktrace
-          test -f app/build/outputs/apk/release/app-release.apk
+        run: gradle assembleRelease --no-daemon --stacktrace
 
       - name: Rename APK
         working-directory: mykeyboard
-        run: cp app/build/outputs/apk/release/app-release.apk MyKeyboard.apk
+        run: |
+          APK_PATH="$(find app/build/outputs/apk/release -maxdepth 1 -type f -name '*.apk' | head -n 1)"
+          test -n "$APK_PATH"
+          cp "$APK_PATH" MyKeyboard.apk
+          test -f MyKeyboard.apk
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
