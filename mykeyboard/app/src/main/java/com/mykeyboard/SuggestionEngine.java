@@ -99,7 +99,7 @@ public final class SuggestionEngine {
     public void learnText(String text) {
         if (text == null || text.isEmpty()) return;
 
-        String[] words = text.trim().split("[^\p{L}\p{Nd}]+");
+        String[] words = text.trim().split("[^\\p{L}\\p{Nd}]+");
         String previous = null;
         SharedPreferences.Editor editor = prefs.edit();
 
@@ -192,7 +192,7 @@ public final class SuggestionEngine {
     }
 
     private String normalizeKey(String value) {
-        return value.toLowerCase(Locale.ROOT).replaceAll("[^\p{L}\p{Nd}]", "");
+        return value.toLowerCase(Locale.ROOT).replaceAll("[^\\p{L}\\p{Nd}]", "");
     }
 
     private boolean isWordChar(char c) {
