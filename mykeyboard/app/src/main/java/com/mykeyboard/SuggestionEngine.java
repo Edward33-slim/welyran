@@ -57,6 +57,8 @@ public final class SuggestionEngine {
     // personal model has learned enough text.
     private final Map<String, String[]> arabicBigrams = new HashMap<>();
     private final Map<String, String[]> englishBigrams = new HashMap<>();
+    private final Map<String, String[]> arabicTrigrams = new HashMap<>();
+    private final Map<String, String[]> englishTrigrams = new HashMap<>();
 
     public SuggestionEngine(Context context) {
         prefs = context.getApplicationContext()
@@ -96,6 +98,22 @@ public final class SuggestionEngine {
         englishBigrams.put("my", new String[]{"keyboard","phone","app"});
         englishBigrams.put("this", new String[]{"is","keyboard","app"});
         englishBigrams.put("i'm", new String[]{"going","using","trying"});
+
+        // A small built-in trigram layer gives the engine more context than
+        // a simple previous-word lookup, while remaining fully offline.
+        arabicTrigrams.put("أنا|أريد", new String[]{"أن","أكتب","هذا"});
+        arabicTrigrams.put("كيف|حالك", new String[]{"اليوم","الآن","؟"});
+        arabicTrigrams.put("هذا|هو", new String[]{"جيد","أفضل","المطلوب"});
+        arabicTrigrams.put("في|البيت", new String[]{"الآن","اليوم","معي"});
+        arabicTrigrams.put("على|هذا", new String[]{"الكيبورد","الهاتف","الجهاز"});
+        arabicTrigrams.put("شكرا|لك", new String[]{"جزيلاً","على","المساعدة"});
+
+        englishTrigrams.put("i|want", new String[]{"to","the","a"});
+        englishTrigrams.put("i|need", new String[]{"to","some","your"});
+        englishTrigrams.put("how|are", new String[]{"you","things","we"});
+        englishTrigrams.put("this|is", new String[]{"the","a","my"});
+        englishTrigrams.put("in|the", new String[]{"next","same","app"});
+        englishTrigrams.put("thank|you", new String[]{"for","very","so"});
     }
 
     public String currentWord(String text) {
@@ -128,6 +146,28 @@ public final class SuggestionEngine {
         return text.substring(prevStart + 1, prevEnd + 1);
     }
 
+    private List<String> completedWords(String text) {
+        List<String> words = new ArrayList<>();
+        if (text == null || text.isEmpty()) return words;
+
+        String[] parts = text.split("[^\\p{L}\\p{Nd}]+");
+        for (String part : parts) {
+            if (!part.isEmpty()) words.add(part);
+        }
+
+        // If the cursor is inside a word, the last token is the current word,
+        // not a completed context word.
+        if (!currentWord(text).isEmpty() && !words.isEmpty()) {
+            words.remove(words.size() - 1);
+        }
+        return words;
+    }
+
+    private String secondPreviousCompletedWord(String text) {
+        List<String> words = completedWords(text);
+        return words.size() >= 2 ? words.get(words.size() - 2) : "";
+    }
+
     private String lastCompletedWord(String text) {
         if (text == null || text.isEmpty()) return "";
         String trimmed = text.trim();
@@ -144,6 +184,7 @@ public final class SuggestionEngine {
     public List<String> suggest(String text, boolean arabic) {
         String current = currentWord(text);
         String previous = previousCompletedWord(text);
+        String secondPrevious = secondPreviousCompletedWord(text);
         boolean typingCurrent = !current.isEmpty();
 
         Set<String> result = new LinkedHashSet<>();
@@ -180,14 +221,14 @@ public final class SuggestionEngine {
             // If the current word has only one/two matches, use the context
             // to fill the remaining prediction slot with the next word.
             if (result.size() < 3 && !previous.isEmpty()) {
-                for (String word : nextWords(previous, arabic)) {
+                for (String word : nextWords(secondPrevious, previous, arabic)) {
                     result.add(word);
                     if (result.size() >= 3) break;
                 }
             }
         } else {
             // No current word: show three next-word predictions.
-            for (String word : nextWords(lastCompletedWord(text), arabic)) {
+            for (String word : nextWords(secondPrevious, lastCompletedWord(text), arabic)) {
                 result.add(word);
                 if (result.size() >= 3) break;
             }
@@ -220,6 +261,7 @@ public final class SuggestionEngine {
         String[] words = text.trim().split("[^\\p{L}\\p{Nd}]+");
         SharedPreferences.Editor editor = prefs.edit();
         String previous = null;
+        String secondPrevious = null;
 
         for (String word : words) {
             if (word.isEmpty()) continue;
@@ -236,32 +278,58 @@ public final class SuggestionEngine {
                 int pairFrequency = prefs.getInt(pairKey, 0);
                 editor.putInt(pairKey, Math.min(10000, pairFrequency + 1));
             }
+
+            if (secondPrevious != null && previous != null) {
+                String triKey = "tri." + normalizeKey(secondPrevious)
+                        + ">" + normalizeKey(previous) + ">" + normalized;
+                int triFrequency = prefs.getInt(triKey, 0);
+                editor.putInt(triKey, Math.min(10000, triFrequency + 1));
+            }
+
+            secondPrevious = previous;
             previous = word;
         }
 
         editor.apply();
     }
 
-    private List<String> nextWords(String previous, boolean arabic) {
+    private List<String> nextWords(String secondPrevious, String previous, boolean arabic) {
         List<Ranked> ranked = new ArrayList<>();
         Set<String> seen = new LinkedHashSet<>();
 
         if (previous != null && !previous.isEmpty()) {
-            String key = normalizeKey(previous);
+            String previousKey = normalizeKey(previous);
+            String secondKey = normalizeKey(secondPrevious);
 
-            // Personal learned bigrams get the strongest weight.
-            for (Map.Entry<String, ?> e : prefs.getAll().entrySet()) {
-                if (!e.getKey().startsWith("pair.")) continue;
-
-                String pair = e.getKey().substring(5);
-                int split = pair.indexOf('>');
-                if (split <= 0) continue;
-
-                if (pair.substring(0, split).equals(key)) {
-                    String next = pair.substring(split + 1);
+            // Personal trigrams are strongest because they model the user's
+            // immediate sentence context.
+            if (!secondKey.isEmpty()) {
+                String prefix = "tri." + secondKey + ">" + previousKey + ">";
+                for (Map.Entry<String, ?> e : prefs.getAll().entrySet()) {
+                    if (!e.getKey().startsWith(prefix)) continue;
+                    String next = e.getKey().substring(prefix.length());
                     int count = toInt(e.getValue());
-                    if (!next.isEmpty()) ranked.add(new Ranked(next, 100000 + count));
+                    if (!next.isEmpty()) ranked.add(new Ranked(next, 200000 + count));
                 }
+
+                Map<String, String[]> builtInTri = arabic ? arabicTrigrams : englishTrigrams;
+                String[] triWords = builtInTri.get(
+                        normalize(secondPrevious) + "|" + normalize(previous));
+                if (triWords != null) {
+                    for (int i = 0; i < triWords.length; i++) {
+                        ranked.add(new Ranked(triWords[i], 12000 - i));
+                    }
+                }
+            }
+
+            // Personal bigrams remain useful when there is not enough trigram
+            // history yet.
+            String pairPrefix = "pair." + previousKey + ">";
+            for (Map.Entry<String, ?> e : prefs.getAll().entrySet()) {
+                if (!e.getKey().startsWith(pairPrefix)) continue;
+                String next = e.getKey().substring(pairPrefix.length());
+                int count = toInt(e.getValue());
+                if (!next.isEmpty()) ranked.add(new Ranked(next, 100000 + count));
             }
 
             Map<String, String[]> builtIn = arabic ? arabicBigrams : englishBigrams;
@@ -275,7 +343,8 @@ public final class SuggestionEngine {
             }
         }
 
-        // Add frequent learned words as fallbacks.
+        // Learned word frequency is the fallback, similar to a user history
+        // dictionary used by mature Android keyboard engines.
         for (Map.Entry<String, ?> e : prefs.getAll().entrySet()) {
             if (!e.getKey().startsWith("word.")) continue;
             String word = e.getKey().substring(5);
@@ -285,9 +354,7 @@ public final class SuggestionEngine {
         ranked.sort(Comparator.comparingInt((Ranked r) -> r.score).reversed());
 
         for (Ranked r : ranked) {
-            if (seen.add(r.word)) {
-                if (seen.size() >= 3) break;
-            }
+            if (seen.add(r.word) && seen.size() >= 3) break;
         }
 
         return new ArrayList<>(seen);
