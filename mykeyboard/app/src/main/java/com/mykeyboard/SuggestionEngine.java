@@ -158,6 +158,55 @@ public final class SuggestionEngine {
         arabicBigrams.put("ليس", new String[]{"هناك","هذا","لدي"});
         arabicBigrams.put("هناك", new String[]{"شيء","مشكلة","الكثير"});
         arabicBigrams.put("هنا", new String[]{"يمكن","يوجد","الآن"});
+        arabicBigrams.put("يا", new String[]{"صديقي","صديقتي","أخي"});
+        arabicBigrams.put("صديقي", new String[]{"كيف","العزيز","الغالي"});
+        arabicBigrams.put("صباح", new String[]{"الخير","النور"});
+        arabicBigrams.put("مساء", new String[]{"الخير","النور"});
+        arabicBigrams.put("صباحا", new String[]{"الخير","اليوم"});
+        arabicBigrams.put("صباحاً", new String[]{"الخير","اليوم"});
+        arabicBigrams.put("أهلا", new String[]{"وسهلا","بك"});
+        arabicBigrams.put("أهلاً", new String[]{"وسهلاً","بك"});
+        arabicBigrams.put("وسهلا", new String[]{"بك"});
+        arabicBigrams.put("بك", new String[]{"كيف","جداً","اليوم"});
+        arabicBigrams.put("جدا", new String[]{"جيد","ممتاز","لكن"});
+        arabicBigrams.put("جداً", new String[]{"جيد","ممتاز","لكن"});
+        arabicBigrams.put("بشكل", new String[]{"جيد","أفضل","صحيح"});
+        arabicBigrams.put("بسبب", new String[]{"هذا","ذلك","المشكلة"});
+        arabicBigrams.put("قبل", new String[]{"أن","هذا","العمل"});
+        arabicBigrams.put("بعد", new String[]{"أن","ذلك","هذا"});
+        arabicBigrams.put("عندما", new String[]{"تكون","يكون","أكون"});
+        arabicBigrams.put("إذا", new String[]{"كان","كنت","كنتِ"});
+        arabicBigrams.put("عندي", new String[]{"وقت","مشكلة","سؤال"});
+        arabicBigrams.put("لدي", new String[]{"وقت","مشكلة","سؤال"});
+        arabicBigrams.put("عندك", new String[]{"وقت","مشكلة","سؤال"});
+        arabicBigrams.put("تريد", new String[]{"أن","هذا","شيئا"});
+        arabicBigrams.put("تريدين", new String[]{"أن","هذا","شيئا"});
+        arabicBigrams.put("يريد", new String[]{"أن","يكون","هذا"});
+        arabicBigrams.put("نريد", new String[]{"أن","هذا","يمكن"});
+        arabicBigrams.put("أستطيع", new String[]{"أن","ذلك","هذا"});
+        arabicBigrams.put("تستطيع", new String[]{"أن","ذلك","هذا"});
+        arabicBigrams.put("أعمل", new String[]{"على","في","الآن"});
+        arabicBigrams.put("أكتب", new String[]{"هذا","رسالة","الكلمة"});
+        arabicBigrams.put("أقرأ", new String[]{"هذا","الكتاب","الرسالة"});
+        arabicBigrams.put("أذهب", new String[]{"إلى","البيت","العمل"});
+        arabicBigrams.put("البيت", new String[]{"الآن","اليوم","معي"});
+        arabicBigrams.put("العمل", new String[]{"الآن","اليوم","غداً"});
+        arabicBigrams.put("الهاتف", new String[]{"الجديد","الآن","معي"});
+        arabicBigrams.put("الجهاز", new String[]{"الجديد","الآن","يعمل"});
+        arabicBigrams.put("الجديد", new String[]{"جداً","والأفضل","الآن"});
+        arabicBigrams.put("المشكلة", new String[]{"في","هي","الآن"});
+        arabicBigrams.put("المساعدة", new String[]{"في","شكراً","مهمة"});
+        arabicBigrams.put("شكراً", new String[]{"لك","جزيلاً","على"});
+        arabicBigrams.put("شكرا", new String[]{"لك","جزيلاً","على"});
+        arabicBigrams.put("جزيلاً", new String[]{"لك","على","جداً"});
+        arabicBigrams.put("على", new String[]{"الخير","الطريق","هذا"});
+        arabicBigrams.put("لك", new String[]{"على","جداً","هذا"});
+        arabicBigrams.put("إن", new String[]{"شاء","هذا","كان"});
+        arabicBigrams.put("شاء", new String[]{"الله"});
+        arabicBigrams.put("ورحمة", new String[]{"الله"});
+        arabicBigrams.put("ورحمة الله", new String[]{"وبركاته"});
+        arabicBigrams.put("بركاته", new String[]{"يا","لك"});
+
 
         englishBigrams.put("i", new String[]{"want","need","can"});
         englishBigrams.put("you", new String[]{"can","are","have"});
@@ -246,15 +295,17 @@ public final class SuggestionEngine {
 
     private String lastCompletedWord(String text) {
         if (text == null || text.isEmpty()) return "";
-        String trimmed = text.trim();
-        if (trimmed.isEmpty()) return "";
 
-        int end = trimmed.length() - 1;
-        while (end >= 0 && isWordChar(trimmed.charAt(end))) end--;
-        if (end == trimmed.length() - 1) {
-            return currentWord(trimmed);
-        }
-        return "";
+        // The cursor is often immediately after a space. Ignore separators
+        // and return the last complete token before them.
+        int end = text.length() - 1;
+        while (end >= 0 && !isWordChar(text.charAt(end))) end--;
+        if (end < 0) return "";
+
+        int start = end;
+        while (start >= 0 && isWordChar(text.charAt(start))) start--;
+
+        return text.substring(start + 1, end + 1);
     }
 
     public List<String> suggest(String text, boolean arabic) {
@@ -313,8 +364,13 @@ public final class SuggestionEngine {
             }
 
             if (result.isEmpty()) {
+                List<Ranked> coldStart = new ArrayList<>();
                 for (String word : (arabic ? arabicWords : englishWords)) {
-                    result.add(word);
+                    coldStart.add(new Ranked(word, Math.max(1, wordFrequency(word))));
+                }
+                coldStart.sort(Comparator.comparingInt((Ranked r) -> r.score).reversed());
+                for (Ranked r : coldStart) {
+                    result.add(r.word);
                     if (result.size() >= 3) break;
                 }
             }
@@ -417,7 +473,9 @@ public final class SuggestionEngine {
 
             if (builtInWords != null) {
                 for (int i = 0; i < builtInWords.length; i++) {
-                    ranked.add(new Ranked(builtInWords[i], 5000 - i));
+                    String candidate = builtInWords[i];
+                    int frequency = wordFrequency(candidate);
+                    ranked.add(new Ranked(candidate, 50000 - (i * 100) + Math.min(frequency, 1000)));
                 }
             }
         }
