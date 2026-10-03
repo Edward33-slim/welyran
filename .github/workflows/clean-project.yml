@@ -1,10 +1,10 @@
-name: Clean Project Contents
+name: 🧹 Clean Project Files
 
 on:
   workflow_dispatch:
     inputs:
       confirm:
-        description: 'Type CLEAN to confirm project cleanup'
+        description: "Type CLEAN to confirm"
         required: true
         type: string
 
@@ -12,7 +12,8 @@ permissions:
   contents: write
 
 jobs:
-  clean:
+  clean-project:
+    name: Delete project files (keep Git + Actions)
     if: ${{ inputs.confirm == 'CLEAN' }}
     runs-on: ubuntu-latest
 
@@ -22,29 +23,29 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Remove project contents
+      - name: Delete project files
         shell: bash
         run: |
           set -euo pipefail
 
-          # Keep Git metadata and GitHub Actions workflows.
+          # Keep .git and .github.
           find . -mindepth 1 -maxdepth 1 \
             ! -name '.git' \
             ! -name '.github' \
             -exec rm -rf -- {} +
 
-          # Keep only .github/workflows under .github.
+          # Inside .github, keep only workflows.
           find .github -mindepth 1 -maxdepth 1 \
             ! -name 'workflows' \
             -exec rm -rf -- {} +
 
-          # Remove files/directories inside workflows only if they are not workflow files.
+          # Keep YAML workflow files only.
           find .github/workflows -mindepth 1 \
             ! -type f -name '*.yml' \
             ! -type f -name '*.yaml' \
             -exec rm -rf -- {} +
 
-      - name: Commit cleanup
+      - name: Commit changes
         shell: bash
         run: |
           set -euo pipefail
@@ -53,9 +54,9 @@ jobs:
 
           git add -A
           if git diff --cached --quiet; then
-            echo "Nothing to clean."
+            echo "No project files to remove."
             exit 0
           fi
 
-          git commit -m "Clean project contents"
+          git commit -m "Clean project files"
           git push
