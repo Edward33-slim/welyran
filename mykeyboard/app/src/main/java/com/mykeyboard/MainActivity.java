@@ -1,4 +1,4 @@
-package com.MyKeyboard;
+package com.mykeyboard;
 
 import android.app.Activity;
 import android.content.Intent;
