@@ -1,0 +1,11 @@
+Arabic frequency data attribution
+
+The bundled ar_frequency.txt contains the first 1,500 entries from:
+Luraty/language-packs — languages/ar/out/frequency.txt
+
+Source: Leipzig Arabic newswire corpora (2020 and 2022)
+License: CC BY 4.0
+Repository: https://github.com/Luraty/language-packs
+
+The source repository states that the Arabic frequency list is derived data under CC BY 4.0.
+See languages/ar/SOURCES.md in the source repository for provenance and licensing details.
