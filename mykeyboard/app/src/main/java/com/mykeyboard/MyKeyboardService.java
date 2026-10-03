@@ -1,8 +1,5 @@
 package com.mykeyboard;
 
-import android.content.ClipData;
-import android.content.ClipboardManager;
-import android.content.Context;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
@@ -19,13 +16,12 @@ import java.util.List;
 
 public class MyKeyboardService extends InputMethodService {
     private boolean arabic = true;
-    private boolean shift = false;
-
     private LinearLayout root;
     private LinearLayout suggestions;
     private SuggestionEngine predictor;
 
-    // Exact left-to-right layout matching the reference screenshots.
+    // These arrays are intentionally left-to-right. The rows are forced LTR
+    // so Android RTL locale settings do not reverse their visual order.
     private static final String[] EN = {
             "qwertyuiop",
             "asdfghjkl",
@@ -56,7 +52,6 @@ public class MyKeyboardService extends InputMethodService {
     @Override
     public void onStartInput(EditorInfo attribute, boolean restarting) {
         super.onStartInput(attribute, restarting);
-        shift = false;
     }
 
     @Override
@@ -71,6 +66,9 @@ public class MyKeyboardService extends InputMethodService {
     private void buildKeyboard() {
         root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
+        root.setGravity(Gravity.CENTER);
+        root.setLayoutDirection(View.LAYOUT_DIRECTION_LTR);
+        root.setTextDirection(View.TEXT_DIRECTION_LTR);
         root.setPadding(dp(3), dp(3), dp(3), dp(4));
         root.setBackgroundColor(Color.rgb(29, 30, 37));
 
@@ -88,7 +86,10 @@ public class MyKeyboardService extends InputMethodService {
 
     private void buildSuggestionRow() {
         suggestions = new LinearLayout(this);
-        suggestions.setGravity(Gravity.CENTER_VERTICAL);
+        suggestions.setOrientation(LinearLayout.HORIZONTAL);
+        suggestions.setGravity(Gravity.CENTER);
+        suggestions.setLayoutDirection(View.LAYOUT_DIRECTION_LTR);
+        suggestions.setTextDirection(View.TEXT_DIRECTION_LTR);
         suggestions.setPadding(dp(4), 0, dp(4), 0);
         root.addView(suggestions, new LinearLayout.LayoutParams(-1, dp(46)));
     }
@@ -97,11 +98,10 @@ public class MyKeyboardService extends InputMethodService {
         if (suggestions == null || predictor == null) return;
 
         suggestions.removeAllViews();
-
         InputConnection ic = getCurrentInputConnection();
         if (ic == null) return;
 
-        CharSequence before = ic.getTextBeforeCursor(160, 0);
+        CharSequence before = ic.getTextBeforeCursor(200, 0);
         String context = before == null ? "" : before.toString();
 
         List<String> values = predictor.suggest(context, arabic);
@@ -117,6 +117,8 @@ public class MyKeyboardService extends InputMethodService {
         t.setTextSize(16);
         t.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
         t.setGravity(Gravity.CENTER);
+        t.setLayoutDirection(View.LAYOUT_DIRECTION_LTR);
+        t.setTextDirection(View.TEXT_DIRECTION_LTR);
         t.setPadding(dp(5), 0, dp(5), 0);
         t.setBackground(keyBackground(true));
 
@@ -124,12 +126,12 @@ public class MyKeyboardService extends InputMethodService {
             InputConnection ic = getCurrentInputConnection();
             if (ic == null) return;
 
-            CharSequence before = ic.getTextBeforeCursor(160, 0);
+            CharSequence before = ic.getTextBeforeCursor(200, 0);
             String context = before == null ? "" : before.toString();
-            String partial = predictor.currentWord(context);
+            String current = predictor.currentWord(context);
 
-            if (!partial.isEmpty()) {
-                ic.deleteSurroundingText(partial.length(), 0);
+            if (!current.isEmpty()) {
+                ic.deleteSurroundingText(current.length(), 0);
             }
 
             ic.commitText(value + " ", 1);
@@ -144,11 +146,13 @@ public class MyKeyboardService extends InputMethodService {
 
     private void addNumberRow() {
         LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
         row.setGravity(Gravity.CENTER);
-        String[] numbers = arabic ? AR_NUMBERS : EN_NUMBERS;
+        row.setLayoutDirection(View.LAYOUT_DIRECTION_LTR);
 
+        String[] numbers = arabic ? AR_NUMBERS : EN_NUMBERS;
         for (String number : numbers) {
-            addKey(row, number, 1f, false);
+            addKey(row, number, 1f);
         }
 
         root.addView(row, new LinearLayout.LayoutParams(-1, dp(48)));
@@ -156,17 +160,18 @@ public class MyKeyboardService extends InputMethodService {
 
     private void addLetterRow(String rowText) {
         LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
         row.setGravity(Gravity.CENTER);
+        row.setLayoutDirection(View.LAYOUT_DIRECTION_LTR);
 
-        // "لا" is one visual Arabic key, matching the reference keyboard.
-        if (arabic && rowText.contains("لا")) {
-            String[] keys = rowText.replace("لا", "¤").split("");
+        if (arabic && rowText.equals("ئءؤرلاىةوزظ")) {
+            String[] keys = {"ئ","ء","ؤ","ر","لا","ى","ة","و","ز","ظ"};
             for (String key : keys) {
-                if (!key.isEmpty()) addKey(row, key.equals("¤") ? "لا" : key, 1f, false);
+                addKey(row, key, 1f);
             }
         } else {
             for (int i = 0; i < rowText.length(); i++) {
-                addKey(row, String.valueOf(rowText.charAt(i)), 1f, false);
+                addKey(row, String.valueOf(rowText.charAt(i)), 1f);
             }
         }
 
@@ -175,8 +180,11 @@ public class MyKeyboardService extends InputMethodService {
 
     private void buildBottomRow() {
         LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
         row.setGravity(Gravity.CENTER);
+        row.setLayoutDirection(View.LAYOUT_DIRECTION_LTR);
 
+        // Fixed left-to-right position: 123, emoji, comma, EN, space, punctuation, backspace, enter.
         addSpecial(row, "123", 0.85f, v -> {});
         addSpecial(row, "☺", 0.65f, v -> {});
         addSpecial(row, arabic ? "،" : ",", 0.55f,
@@ -184,7 +192,6 @@ public class MyKeyboardService extends InputMethodService {
 
         addSpecial(row, arabic ? "EN" : "ع", 0.85f, v -> {
             arabic = !arabic;
-            shift = false;
             buildKeyboard();
         });
 
@@ -199,17 +206,17 @@ public class MyKeyboardService extends InputMethodService {
         root.addView(row, new LinearLayout.LayoutParams(-1, dp(56)));
     }
 
-    private void addKey(LinearLayout row, String label, float weight, boolean special) {
+    private void addKey(LinearLayout row, String label, float weight) {
         Button b = new Button(this);
-        String shown = shift && !arabic ? label.toUpperCase() : label;
-
-        b.setText(shown);
+        b.setText(label);
         b.setTextSize(18);
         b.setTextColor(Color.WHITE);
         b.setAllCaps(false);
         b.setGravity(Gravity.CENTER);
+        b.setLayoutDirection(View.LAYOUT_DIRECTION_LTR);
+        b.setTextDirection(View.TEXT_DIRECTION_LTR);
         b.setPadding(0, 0, 0, 0);
-        b.setBackground(keyBackground(special));
+        b.setBackground(keyBackground(false));
         b.setOnClickListener(v -> commit(b.getText().toString()));
 
         LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(0, -1, weight);
@@ -224,6 +231,8 @@ public class MyKeyboardService extends InputMethodService {
         b.setTextColor(Color.WHITE);
         b.setAllCaps(false);
         b.setGravity(Gravity.CENTER);
+        b.setLayoutDirection(View.LAYOUT_DIRECTION_LTR);
+        b.setTextDirection(View.TEXT_DIRECTION_LTR);
         b.setPadding(0, 0, 0, 0);
         b.setBackground(keyBackground(true));
         b.setOnClickListener(click);
@@ -244,7 +253,7 @@ public class MyKeyboardService extends InputMethodService {
         InputConnection ic = getCurrentInputConnection();
         if (ic == null) return;
 
-        CharSequence before = ic.getTextBeforeCursor(160, 0);
+        CharSequence before = ic.getTextBeforeCursor(200, 0);
         String context = before == null ? "" : before.toString();
 
         ic.commitText(text, 1);
@@ -252,7 +261,6 @@ public class MyKeyboardService extends InputMethodService {
         if (" ".equals(text) || text.indexOf('\n') >= 0) {
             predictor.learnText(context + text);
         }
-
         updateSuggestions();
     }
 
@@ -264,22 +272,9 @@ public class MyKeyboardService extends InputMethodService {
         }
     }
 
-    private void pasteClipboard() {
-        ClipboardManager cm = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
-        if (cm == null || !cm.hasPrimaryClip()) return;
-
-        ClipData data = cm.getPrimaryClip();
-        if (data == null || data.getItemCount() == 0) return;
-
-        CharSequence text = data.getItemAt(0).coerceToText(this);
-        if (text != null) commit(text.toString());
-    }
-
     private void enter() {
         InputConnection ic = getCurrentInputConnection();
         if (ic == null) return;
-
-        // Always insert a newline.
         ic.commitText("\n", 1);
         updateSuggestions();
     }
