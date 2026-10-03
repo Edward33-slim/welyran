@@ -6,6 +6,7 @@ import android.content.SharedPreferences;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
@@ -15,7 +16,6 @@ import java.util.Set;
 public final class SuggestionEngine {
     private final SharedPreferences prefs;
 
-    // Built-in common vocabulary. Learned words are added dynamically.
     private final List<String> arabicWords = Arrays.asList(
             "أنا","أنت","أنتِ","هو","هي","نحن","أنتم","هم","هذا","هذه","ذلك","تلك",
             "الذي","التي","الذين","من","ما","ماذا","متى","أين","كيف","لماذا","هل","و","أو","لكن",
@@ -29,10 +29,10 @@ public final class SuggestionEngine {
             "مرحبا","مرحباً","أهلاً","السلام","عليكم","حسناً","تمام","طيب","أكيد","ربما",
             "كتاب","بيت","منزل","مدرسة","جامعة","عمل","سيارة","هاتف","جهاز","برنامج","تطبيق",
             "لوحة","مفاتيح","كيبورد","لغة","عربي","العربية","إنجليزي","الإنجليزية","كلمة","كلمات",
-            "نص","رسالة","اسم","رقم","صورة","ملف","مشكلة","حل","طريق","مكان","شيء","وقت",
-            "البيت","العمل","الوقت","الكلام","النص","الرسالة","الناس","الخير","السلام","حالك",
-            "لك","لي","معك","عندي","عندك","لدينا","لدي","أريد","تريد","يريد","تريدين",
-            "أن","أنها","أنه","أنني","لأن","لذلك","ثم","أيضاً","أيضا","مرة","دائماً","دائما"
+            "نص","رسالة","اسم","رقم","صورة","ملف","مشكلة","حل","طريق","مكان","شيء","البيت",
+            "العمل","الوقت","الكلام","النص","الرسالة","الناس","الخير","حالك","لك","لي","معك",
+            "عندي","عندك","لدينا","لدي","تريد","يريد","تريدين","أن","أنها","أنه","أنني","لأن",
+            "لذلك","ثم","أيضاً","أيضا","مرة","دائماً","دائما","اليوم","بكرة"
     );
 
     private final List<String> englishWords = Arrays.asList(
@@ -49,45 +49,122 @@ public final class SuggestionEngine {
             "keyboard","language","english","arabic","word","words","text","message","name","number",
             "picture","file","problem","solution","road","place","thing","time","people","next",
             "current","prediction","typing","type","input","with","from","into","about","for","on",
-            "in","at","to","of","by","as","my","your","his","her","our","their","me","him","them"
+            "in","at","to","of","by","as","my","your","his","her","our","their","me","him","them",
+            "please","could","help","make","build","test","download","application"
     );
+
+    // Common next-word relationships provide useful predictions before the
+    // personal model has learned enough text.
+    private final Map<String, String[]> arabicBigrams = new HashMap<>();
+    private final Map<String, String[]> englishBigrams = new HashMap<>();
 
     public SuggestionEngine(Context context) {
         prefs = context.getApplicationContext()
                 .getSharedPreferences("prediction", Context.MODE_PRIVATE);
+        initBigrams();
+    }
+
+    private void initBigrams() {
+        arabicBigrams.put("أنا", new String[]{"أريد","أحتاج","أعرف"});
+        arabicBigrams.put("أريد", new String[]{"أن","هذا","شيء"});
+        arabicBigrams.put("أحتاج", new String[]{"إلى","هذا","مساعدة"});
+        arabicBigrams.put("أنت", new String[]{"تريد","تعرف","تكتب"});
+        arabicBigrams.put("كيف", new String[]{"حالك","يمكنني","أكتب"});
+        arabicBigrams.put("ماذا", new String[]{"تريد","تفعل","تكتب"});
+        arabicBigrams.put("هذا", new String[]{"هو","جيد","ما"});
+        arabicBigrams.put("هذه", new String[]{"هي","الكلمة","الصورة"});
+        arabicBigrams.put("في", new String[]{"البيت","العمل","الوقت"});
+        arabicBigrams.put("على", new String[]{"الطريق","هذا","الكيبورد"});
+        arabicBigrams.put("من", new String[]{"أجل","هذا","هنا"});
+        arabicBigrams.put("شكراً", new String[]{"لك","جزيلاً"});
+        arabicBigrams.put("شكرا", new String[]{"لك","جزيلاً"});
+        arabicBigrams.put("الكيبورد", new String[]{"العربي","الإنجليزي"});
+        arabicBigrams.put("العربية", new String[]{"والإنجليزية","سهلة","الآن"});
+
+        englishBigrams.put("i", new String[]{"want","need","can"});
+        englishBigrams.put("you", new String[]{"can","are","have"});
+        englishBigrams.put("the", new String[]{"next","word","keyboard"});
+        englishBigrams.put("how", new String[]{"are","do","can"});
+        englishBigrams.put("what", new String[]{"do","is","are"});
+        englishBigrams.put("where", new String[]{"is","are","can"});
+        englishBigrams.put("why", new String[]{"are","do","is"});
+        englishBigrams.put("to", new String[]{"the","use","do"});
+        englishBigrams.put("in", new String[]{"the","this","a"});
+        englishBigrams.put("on", new String[]{"the","this","my"});
+        englishBigrams.put("thank", new String[]{"you"});
+        englishBigrams.put("thanks", new String[]{"for"});
+        englishBigrams.put("my", new String[]{"keyboard","phone","app"});
+        englishBigrams.put("this", new String[]{"is","keyboard","app"});
+        englishBigrams.put("i'm", new String[]{"going","using","trying"});
     }
 
     public String currentWord(String text) {
         if (text == null || text.isEmpty()) return "";
-        int end = text.length();
-        int i = end - 1;
+        int i = text.length() - 1;
         while (i >= 0 && isWordChar(text.charAt(i))) i--;
-        return text.substring(i + 1, end);
+        return text.substring(i + 1);
+    }
+
+    private String previousCompletedWord(String text) {
+        if (text == null || text.isEmpty()) return "";
+        int end = text.length() - 1;
+
+        while (end >= 0 && !isWordChar(text.charAt(end))) end--;
+        if (end < 0) return "";
+
+        int start = end;
+        while (start >= 0 && isWordChar(text.charAt(start))) start--;
+
+        // If the last characters form the current word, skip it and find
+        // the word before it.
+        int separator = start;
+        while (separator >= 0 && !isWordChar(text.charAt(separator))) separator--;
+        if (separator < 0) return "";
+
+        int prevEnd = separator;
+        int prevStart = prevEnd;
+        while (prevStart >= 0 && isWordChar(text.charAt(prevStart))) prevStart--;
+
+        return text.substring(prevStart + 1, prevEnd + 1);
+    }
+
+    private String lastCompletedWord(String text) {
+        if (text == null || text.isEmpty()) return "";
+        String trimmed = text.trim();
+        if (trimmed.isEmpty()) return "";
+
+        int end = trimmed.length() - 1;
+        while (end >= 0 && isWordChar(trimmed.charAt(end))) end--;
+        if (end == trimmed.length() - 1) {
+            return currentWord(trimmed);
+        }
+        return "";
     }
 
     public List<String> suggest(String text, boolean arabic) {
         String current = currentWord(text);
-        String previous = previousWord(text);
+        String previous = previousCompletedWord(text);
         boolean typingCurrent = !current.isEmpty();
 
-        List<String> dictionary = arabic ? arabicWords : englishWords;
         Set<String> result = new LinkedHashSet<>();
 
         if (typingCurrent) {
-            // 1. Current-word prediction: prefix + one-edit correction.
+            // First slot: verbatim current word, as in a real prediction bar.
+            result.add(current);
+
             List<Candidate> candidates = new ArrayList<>();
             String partial = normalize(current);
+            List<String> dictionary = arabic ? arabicWords : englishWords;
 
             for (String word : dictionary) {
-                addCurrentCandidate(candidates, partial, word);
+                addCandidate(candidates, partial, word);
             }
 
-            // Learned vocabulary is searched too.
             for (String key : prefs.getAll().keySet()) {
-                if (!key.startsWith("word.")) continue;
-                String learned = key.substring(5);
-                if (learned.isEmpty()) continue;
-                addLearnedCandidate(candidates, partial, learned);
+                if (key.startsWith("word.")) {
+                    String word = key.substring(5);
+                    if (!word.isEmpty()) addCandidate(candidates, partial, word);
+                }
             }
 
             candidates.sort((a, b) -> {
@@ -96,33 +173,29 @@ public final class SuggestionEngine {
             });
 
             for (Candidate c : candidates) {
-                if (!normalize(c.word).equals(partial)) result.add(c.word);
-                if (result.size() == 3) break;
+                result.add(c.word);
+                if (result.size() >= 3) break;
             }
 
-            // If there are not enough current-word matches, add next-word
-            // prediction as a useful third suggestion.
-            if (result.size() < 3) {
-                String next = nextWord(previous, arabic);
-                if (next != null) result.add(next);
+            // If the current word has only one/two matches, use the context
+            // to fill the remaining prediction slot with the next word.
+            if (result.size() < 3 && !previous.isEmpty()) {
+                for (String word : nextWords(previous, arabic)) {
+                    result.add(word);
+                    if (result.size() >= 3) break;
+                }
             }
         } else {
-            // 2. Next-word prediction after a completed word/space.
-            String next = nextWord(previous, arabic);
-            if (next != null) result.add(next);
-
-            // Add two more likely next words.
-            List<NextCandidate> nextCandidates = nextWordCandidates(previous, arabic);
-            for (NextCandidate c : nextCandidates) {
-                result.add(c.word);
-                if (result.size() == 3) break;
+            // No current word: show three next-word predictions.
+            for (String word : nextWords(lastCompletedWord(text), arabic)) {
+                result.add(word);
+                if (result.size() >= 3) break;
             }
 
-            // At the beginning, show high-frequency/common words.
             if (result.isEmpty()) {
-                for (String word : mostFrequent(dictionary)) {
+                for (String word : (arabic ? arabicWords : englishWords)) {
                     result.add(word);
-                    if (result.size() == 3) break;
+                    if (result.size() >= 3) break;
                 }
             }
         }
@@ -130,7 +203,7 @@ public final class SuggestionEngine {
         return new ArrayList<>(result);
     }
 
-    private void addCurrentCandidate(List<Candidate> list, String partial, String word) {
+    private void addCandidate(List<Candidate> list, String partial, String word) {
         String normalized = normalize(word);
         if (normalized.isEmpty() || normalized.equals(partial)) return;
 
@@ -141,39 +214,27 @@ public final class SuggestionEngine {
         }
     }
 
-    private void addLearnedCandidate(List<Candidate> list, String partial, String normalizedLearned) {
-        if (normalizedLearned.equals(partial)) return;
-        if (!normalizedLearned.startsWith(partial) &&
-                (partial.length() < 2 || editDistance(partial, normalizedLearned) > 1)) {
-            return;
-        }
-
-        int frequency = prefs.getInt("word." + normalizedLearned, 0);
-        list.add(new Candidate(normalizedLearned, frequency,
-                normalizedLearned.startsWith(partial) ? 0 : 1));
-    }
-
     public void learnText(String text) {
         if (text == null || text.isEmpty()) return;
 
         String[] words = text.trim().split("[^\\p{L}\\p{Nd}]+");
-        String previous = null;
         SharedPreferences.Editor editor = prefs.edit();
+        String previous = null;
 
         for (String word : words) {
             if (word.isEmpty()) continue;
 
-            String normalizedWord = normalizeKey(word);
-            if (normalizedWord.isEmpty()) continue;
+            String normalized = normalizeKey(word);
+            if (normalized.isEmpty()) continue;
 
-            String key = "word." + normalizedWord;
-            int frequency = prefs.getInt(key, 0);
-            editor.putInt(key, Math.min(frequency + 1, 10000));
+            String wordKey = "word." + normalized;
+            int frequency = prefs.getInt(wordKey, 0);
+            editor.putInt(wordKey, Math.min(10000, frequency + 1));
 
             if (previous != null) {
-                String pairKey = "pair." + normalizeKey(previous) + ">" + normalizedWord;
+                String pairKey = "pair." + normalizeKey(previous) + ">" + normalized;
                 int pairFrequency = prefs.getInt(pairKey, 0);
-                editor.putInt(pairKey, Math.min(pairFrequency + 1, 10000));
+                editor.putInt(pairKey, Math.min(10000, pairFrequency + 1));
             }
             previous = word;
         }
@@ -181,128 +242,63 @@ public final class SuggestionEngine {
         editor.apply();
     }
 
-    private String previousWord(String text) {
-        if (text == null || text.trim().isEmpty()) return "";
+    private List<String> nextWords(String previous, boolean arabic) {
+        List<Ranked> ranked = new ArrayList<>();
+        Set<String> seen = new LinkedHashSet<>();
 
-        String trimmed = text.trim();
-        int end = trimmed.length();
-        int i = end - 1;
+        if (previous != null && !previous.isEmpty()) {
+            String key = normalizeKey(previous);
 
-        while (i >= 0 && isWordChar(trimmed.charAt(i))) i--;
-        return trimmed.substring(i + 1, end);
-    }
+            // Personal learned bigrams get the strongest weight.
+            for (Map.Entry<String, ?> e : prefs.getAll().entrySet()) {
+                if (!e.getKey().startsWith("pair.")) continue;
 
-    private String nextWord(String previous, boolean arabic) {
-        if (previous == null || previous.isEmpty()) {
-            return null;
-        }
+                String pair = e.getKey().substring(5);
+                int split = pair.indexOf('>');
+                if (split <= 0) continue;
 
-        String prefix = normalizeKey(previous);
-        String best = null;
-        int bestCount = 0;
+                if (pair.substring(0, split).equals(key)) {
+                    String next = pair.substring(split + 1);
+                    int count = toInt(e.getValue());
+                    if (!next.isEmpty()) ranked.add(new Ranked(next, 100000 + count));
+                }
+            }
 
-        // Search learned bigrams across the user's own vocabulary.
-        for (Map.Entry<String, ?> entry : prefs.getAll().entrySet()) {
-            String key = entry.getKey();
-            if (!key.startsWith("pair.")) continue;
+            Map<String, String[]> builtIn = arabic ? arabicBigrams : englishBigrams;
+            String[] builtInWords = builtIn.get(previous);
+            if (builtInWords == null) builtInWords = builtIn.get(normalize(previous));
 
-            String pair = key.substring(5);
-            int separator = pair.indexOf('>');
-            if (separator <= 0) continue;
-
-            String left = pair.substring(0, separator);
-            String right = pair.substring(separator + 1);
-
-            if (!left.equals(prefix)) continue;
-
-            int count = toInt(entry.getValue());
-            if (count > bestCount) {
-                bestCount = count;
-                best = right;
+            if (builtInWords != null) {
+                for (int i = 0; i < builtInWords.length; i++) {
+                    ranked.add(new Ranked(builtInWords[i], 5000 - i));
+                }
             }
         }
 
-        if (best != null) return best;
+        // Add frequent learned words as fallbacks.
+        for (Map.Entry<String, ?> e : prefs.getAll().entrySet()) {
+            if (!e.getKey().startsWith("word.")) continue;
+            String word = e.getKey().substring(5);
+            if (!word.isEmpty()) ranked.add(new Ranked(word, toInt(e.getValue())));
+        }
 
-        // Useful built-in language model fallback.
-        if (arabic) {
-            switch (previous) {
-                case "أنا": return "أريد";
-                case "أريد": return "أن";
-                case "هذا": return "هو";
-                case "هذه": return "هي";
-                case "في": return "البيت";
-                case "على": return "الطريق";
-                case "من": return "أجل";
-                case "شكراً":
-                case "شكرا": return "لك";
-                case "كيف": return "حالك";
-                case "ماذا": return "تريد";
-                case "أنت": return "تريد";
-                case "الكيبورد": return "العربي";
-                default: return "هذا";
+        ranked.sort(Comparator.comparingInt((Ranked r) -> r.score).reversed());
+
+        for (Ranked r : ranked) {
+            if (seen.add(r.word)) {
+                if (seen.size() >= 3) break;
             }
         }
 
-        switch (previous.toLowerCase(Locale.ROOT)) {
-            case "i": return "want";
-            case "you": return "can";
-            case "the": return "next";
-            case "thank": return "you";
-            case "in": return "the";
-            case "to": return "the";
-            case "how": return "are";
-            case "what": return "do";
-            case "i'm": return "going";
-            default: return "the";
-        }
-    }
-
-    private List<NextCandidate> nextWordCandidates(String previous, boolean arabic) {
-        List<NextCandidate> result = new ArrayList<>();
-        if (previous == null || previous.isEmpty()) return result;
-
-        String prefix = normalizeKey(previous);
-
-        for (Map.Entry<String, ?> entry : prefs.getAll().entrySet()) {
-            String key = entry.getKey();
-            if (!key.startsWith("pair.")) continue;
-
-            String pair = key.substring(5);
-            int separator = pair.indexOf('>');
-            if (separator <= 0) continue;
-
-            String left = pair.substring(0, separator);
-            String right = pair.substring(separator + 1);
-
-            if (left.equals(prefix) && !right.isEmpty()) {
-                result.add(new NextCandidate(right, toInt(entry.getValue())));
-            }
-        }
-
-        result.sort(Comparator.comparingInt((NextCandidate c) -> c.frequency).reversed());
-
-        // Add a few generic words so the bar never looks empty.
-        for (String word : arabic ? arabicWords : englishWords) {
-            result.add(new NextCandidate(word, wordFrequency(word)));
-        }
-
-        return result;
+        return new ArrayList<>(seen);
     }
 
     private int wordFrequency(String word) {
         return prefs.getInt("word." + normalizeKey(word), 0);
     }
 
-    private List<String> mostFrequent(List<String> dictionary) {
-        List<String> result = new ArrayList<>(dictionary);
-        result.sort(Comparator.comparingInt(this::wordFrequency).reversed());
-        return result;
-    }
-
     private String normalize(String value) {
-        if (value == null) return "";
-        return value.toLowerCase(Locale.ROOT);
+        return value == null ? "" : value.toLowerCase(Locale.ROOT);
     }
 
     private String normalizeKey(String value) {
@@ -345,9 +341,9 @@ public final class SuggestionEngine {
                 );
             }
 
-            int[] swap = prev;
+            int[] tmp = prev;
             prev = curr;
-            curr = swap;
+            curr = tmp;
         }
 
         return prev[b.length()];
@@ -365,13 +361,13 @@ public final class SuggestionEngine {
         }
     }
 
-    private static final class NextCandidate {
+    private static final class Ranked {
         final String word;
-        final int frequency;
+        final int score;
 
-        NextCandidate(String word, int frequency) {
+        Ranked(String word, int score) {
             this.word = word;
-            this.frequency = frequency;
+            this.score = score;
         }
     }
 }
