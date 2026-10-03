@@ -61,3 +61,5 @@ jobs:
           path: mykeyboard/MyKeyboard.apk
           if-no-files-found: error
           compression-level: 0
+
+# Predictive keyboard build
