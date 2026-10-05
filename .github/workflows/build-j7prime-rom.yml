@@ -25,6 +25,17 @@ jobs:
           sudo docker system prune -af || true
           df -h
 
+      - name: Check build storage
+        run: |
+          echo "Filesystem:"
+          df -h "$GITHUB_WORKSPACE"
+          AVAILABLE_KB=$(df --output=avail "$GITHUB_WORKSPACE" | tail -1 | tr -d ' ')
+          REQUIRED_KB=$((100 * 1024 * 1024))
+          if [ "$AVAILABLE_KB" -lt "$REQUIRED_KB" ]; then
+            echo "::error::A full LineageOS 19.1 source build cannot run on this standard runner: at least 100 GiB free space is required; this runner exposes only about 14 GiB."
+            exit 1
+          fi
+
       - name: Install build dependencies
         run: |
           sudo apt-get update
