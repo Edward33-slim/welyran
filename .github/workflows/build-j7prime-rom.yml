@@ -53,6 +53,9 @@ jobs:
           cd "$GITHUB_WORKSPACE/rom"
           cat >> device/samsung/on7xelte/lineage_on7xelte.mk <<'EOF'
           
+          # Integrate MindTheGapps 12.1 into the ROM itself
+          $(call inherit-product, vendor/gapps/arm64/arm64-vendor.mk)
+
           # Custom J7 Prime identity
           PRODUCT_BRAND := samsung
           PRODUCT_MANUFACTURER := samsung
