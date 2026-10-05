@@ -15,7 +15,7 @@ permissions:
 
 jobs:
   build:
-    runs-on: ubuntu-22.04
+    runs-on: ${{ vars.ROM_RUNNER || 'ubuntu-22.04' }}
     timeout-minutes: 360
 
     steps:
@@ -79,7 +79,8 @@ jobs:
             printf '\n# Integrated MindTheGapps 12.1\n$(call inherit-product, vendor/gapps/arm64/arm64-vendor.mk)\n' >> device/samsung/on7xelte/lineage_on7xelte.mk
           fi
 
-          # Slim profile: keep Play Store/GMS/WebView and core phone functions.
+          # ULTRA-SLIM profile: keep Android framework, phone/radio stack,
+          # Settings/SystemUI/Launcher, Play Store, GMS and WebView.
           # Remove optional Google/Lineage applications to reduce the final ZIP.
           cat >> device/samsung/on7xelte/lineage_on7xelte.mk <<'EOF'
 
@@ -89,7 +90,6 @@ jobs:
           PRODUCT_PACKAGES -= SpeechServicesByGoogle
           PRODUCT_PACKAGES -= Velvet
           PRODUCT_PACKAGES -= talkback
-          PRODUCT_PACKAGES -= AndroidAutoStub
           PRODUCT_PACKAGES -= GoogleFeedback
           PRODUCT_PACKAGES -= GooglePartnerSetup
           PRODUCT_PACKAGES -= PrebuiltExchange3Google
@@ -98,11 +98,17 @@ jobs:
           PRODUCT_PACKAGES -= wellbeing.xml
           PRODUCT_PACKAGES -= GoogleCalendarSyncAdapter
           PRODUCT_PACKAGES -= GoogleContactsSyncAdapter
+          PRODUCT_PACKAGES -= AndroidAutoStub
+          PRODUCT_PACKAGES -= GoogleOneTimeInitializer
           PRODUCT_PACKAGES -= Etar
           PRODUCT_PACKAGES -= Jelly
           PRODUCT_PACKAGES -= Recorder
           PRODUCT_PACKAGES -= Eleven
           PRODUCT_PACKAGES -= AudioFX
+          PRODUCT_PACKAGES -= Aperture
+          PRODUCT_PACKAGES -= Glimpse
+          PRODUCT_PACKAGES -= MusicFX
+          PRODUCT_PACKAGES -= ThemePicker
           EOF
 
           echo "Slim ROM package configuration:"
@@ -114,7 +120,7 @@ jobs:
           source build/envsetup.sh
           lunch lineage_on7xelte-userdebug
           export USE_CCACHE=1
-          ccache -M 20G
+          ccache -M 8G
           m bacon -j2
 
       - name: Collect ROM
