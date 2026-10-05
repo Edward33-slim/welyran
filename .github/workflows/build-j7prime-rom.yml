@@ -79,8 +79,34 @@ jobs:
             printf '\n# Integrated MindTheGapps 12.1\n$(call inherit-product, vendor/gapps/arm64/arm64-vendor.mk)\n' >> device/samsung/on7xelte/lineage_on7xelte.mk
           fi
 
-          echo "Device configuration:"
-          grep -E 'PRODUCT_(DEVICE|NAME|BRAND|MODEL|MANUFACTURER)|TARGET_GAPPS_ARCH' device/samsung/on7xelte/lineage_on7xelte.mk || true
+          # Slim profile: keep Play Store/GMS/WebView and core phone functions.
+          # Remove optional Google/Lineage applications to reduce the final ZIP.
+          cat >> device/samsung/on7xelte/lineage_on7xelte.mk <<'EOF'
+
+          # Slim ROM package exclusions
+          PRODUCT_PACKAGES -= FamilyLinkParentalControls
+          PRODUCT_PACKAGES -= MarkupGoogle_v2
+          PRODUCT_PACKAGES -= SpeechServicesByGoogle
+          PRODUCT_PACKAGES -= Velvet
+          PRODUCT_PACKAGES -= talkback
+          PRODUCT_PACKAGES -= AndroidAutoStub
+          PRODUCT_PACKAGES -= GoogleFeedback
+          PRODUCT_PACKAGES -= GooglePartnerSetup
+          PRODUCT_PACKAGES -= PrebuiltExchange3Google
+          PRODUCT_PACKAGES -= GoogleRestore
+          PRODUCT_PACKAGES -= Wellbeing
+          PRODUCT_PACKAGES -= wellbeing.xml
+          PRODUCT_PACKAGES -= GoogleCalendarSyncAdapter
+          PRODUCT_PACKAGES -= GoogleContactsSyncAdapter
+          PRODUCT_PACKAGES -= Etar
+          PRODUCT_PACKAGES -= Jelly
+          PRODUCT_PACKAGES -= Recorder
+          PRODUCT_PACKAGES -= Eleven
+          PRODUCT_PACKAGES -= AudioFX
+          EOF
+
+          echo "Slim ROM package configuration:"
+          grep -E 'PRODUCT_PACKAGES -=|PRODUCT_(DEVICE|NAME|BRAND|MODEL|MANUFACTURER)|TARGET_GAPPS_ARCH' device/samsung/on7xelte/lineage_on7xelte.mk || true
 
       - name: Build ROM
         run: |
