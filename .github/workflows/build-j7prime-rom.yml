@@ -2,7 +2,7 @@ name: Build J7 Prime ROM (on7xelte)
 
 on:
   push:
-    branches: [rom-builder-on7xelte]
+    branches: [main, rom-builder-on7xelte]
   workflow_dispatch:
 
 permissions:
