@@ -1,5 +1,9 @@
 name: Build J7 Prime ROM (on7xelte)
 
+concurrency:
+  group: j7-prime-rom-build
+  cancel-in-progress: true
+
 on:
   push:
     branches: [main, rom-builder-on7xelte]
@@ -37,39 +41,35 @@ jobs:
         run: |
           mkdir -p "$GITHUB_WORKSPACE/rom"
           cd "$GITHUB_WORKSPACE/rom"
-          repo init -u https://github.com/LineageOS/android.git -b lineage-19.1 --git-lfs
+          repo init -u https://github.com/LineageOS/android.git -b lineage-19.1 --git-lfs --depth=1
           mkdir -p .repo/local_manifests
           curl -fsSL https://raw.githubusercontent.com/Exynos7870-Revived-Beta/android_manifest_samsung_universal7870-common/lineage-19.1/7870.xml             -o .repo/local_manifests/7870.xml
 
       - name: Sync source
         run: |
           cd "$GITHUB_WORKSPACE/rom"
-          repo sync -c -j2 --force-sync --no-clone-bundle --no-tags --optimized-fetch
+          repo sync -c -j2 --force-sync --no-clone-bundle --no-tags --optimized-fetch --depth=1 --partial-clone --clone-filter=blob:limit=10M
         env:
           GIT_TERMINAL_PROMPT: "0"
 
       - name: Configure lightweight J7 Prime build
         run: |
           cd "$GITHUB_WORKSPACE/rom"
-          cat >> device/samsung/on7xelte/lineage_on7xelte.mk <<'EOF'
-          
-          # Integrate MindTheGapps 12.1 into the ROM itself
-          $(call inherit-product, vendor/gapps/arm64/arm64-vendor.mk)
 
-          # Custom J7 Prime identity
-          PRODUCT_BRAND := samsung
-          PRODUCT_MANUFACTURER := samsung
-          PRODUCT_MODEL := Galaxy J7 Prime
-          PRODUCT_DEVICE := on7xelte
-          PRODUCT_GMS_CLIENTID_BASE := android-samsung
-          EOF
+          # The Exynos7870 Revived device tree already defines the Samsung
+          # identity and ARM64 target. Do not append duplicate make variables.
+          test -f device/samsung/on7xelte/lineage_on7xelte.mk
+          grep -q 'PRODUCT_DEVICE := on7xelte' device/samsung/on7xelte/lineage_on7xelte.mk
+          grep -q 'PRODUCT_MODEL := Galaxy J7 Prime' device/samsung/on7xelte/lineage_on7xelte.mk
 
-          mkdir -p vendor/lineage
-          cat > vendor/lineage/privapp-permissions-custom.xml <<'EOF'
-          <?xml version="1.0" encoding="utf-8"?>
-          <permissions>
-          </permissions>
-          EOF
+          # Integrate MindTheGapps 12.1 into the product without corrupting
+          # the device makefile.
+          if ! grep -q 'vendor/gapps/arm64/arm64-vendor.mk' device/samsung/on7xelte/lineage_on7xelte.mk; then
+            printf '\n# Integrated MindTheGapps 12.1\n$(call inherit-product, vendor/gapps/arm64/arm64-vendor.mk)\n' >> device/samsung/on7xelte/lineage_on7xelte.mk
+          fi
+
+          echo "Device configuration:"
+          grep -E 'PRODUCT_(DEVICE|NAME|BRAND|MODEL|MANUFACTURER)|TARGET_GAPPS_ARCH' device/samsung/on7xelte/lineage_on7xelte.mk || true
 
       - name: Build ROM
         run: |
