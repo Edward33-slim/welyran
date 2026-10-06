@@ -1,0 +1,63 @@
+name: J7 Prime - Start Crave Runner
+
+on:
+  workflow_dispatch:
+    inputs:
+      RUNNER_TOKEN:
+        description: "GitHub self-hosted runner token (temporary registration token)"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  start-runner:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install tmux
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y tmux
+
+      - name: Install Crave
+        env:
+          CRAVE_USERNAME: ${{ secrets.CRAVE_USERNAME }}
+          CRAVE_TOKEN: ${{ secrets.CRAVE_TOKEN }}
+        run: |
+          set -e
+          test -n "$CRAVE_USERNAME"
+          test -n "$CRAVE_TOKEN"
+          mkdir -p "$HOME/bin"
+          curl -fsSL https://raw.githubusercontent.com/accupara/crave/master/get_crave.sh | bash -s --
+          mv crave "$HOME/bin/crave"
+          chmod +x "$HOME/bin/crave"
+          echo "$HOME/bin" >> "$GITHUB_PATH"
+          envsubst < crave.conf.sample > "$HOME/crave.conf"
+
+      - name: Create and start runner inside Crave devspace
+        env:
+          RUNNER_TOKEN: ${{ inputs.RUNNER_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -e
+          test -n "$RUNNER_TOKEN"
+          crave devspace -- "set -e
+            rm -rf actions-runner
+            mkdir -p actions-runner
+            cd actions-runner
+            RUNNER_VERSION=2.329.0
+            curl -fsSL -o runner.tar.gz https://github.com/actions/runner/releases/download/v$RUNNER_VERSION/actions-runner-linux-x64-$RUNNER_VERSION.tar.gz
+            tar -xzf runner.tar.gz
+            rm runner.tar.gz
+            ./config.sh --unattended --url https://github.com/$REPO --token '$RUNNER_TOKEN' --name crave-j7prime --labels crave-j7prime --work _work --replace
+            tmux kill-session -t ghactions 2>/dev/null || true
+            tmux new-session -d -s ghactions './run.sh'
+            echo 'Crave GitHub runner started.'
+            sleep 3
+            pgrep -af Runner.Listener || true"
