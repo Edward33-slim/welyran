@@ -1,0 +1,112 @@
+name: Build J7 Prime ROM on Crave
+
+on:
+  workflow_dispatch:
+    inputs:
+      BASE_PROJECT_ID:
+        description: "Crave base project ID (85 = LineageOS 18.1 in the current Crave builder configuration)"
+        required: true
+        default: "85"
+      CLEAN_BUILD:
+        description: "Destroy/recreate the Crave clone before building"
+        required: true
+        default: "no"
+        type: choice
+        options:
+          - "no"
+          - "yes"
+
+permissions:
+  contents: read
+  actions: write
+
+concurrency:
+  group: j7-prime-crave-build
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: [self-hosted, crave-j7prime]
+    timeout-minutes: 1440
+
+    steps:
+      - name: Checkout builder configuration
+        uses: actions/checkout@v4
+
+      - name: Verify Crave credentials
+        env:
+          CRAVE_USERNAME: ${{ secrets.CRAVE_USERNAME }}
+          CRAVE_TOKEN: ${{ secrets.CRAVE_TOKEN }}
+        run: |
+          set -e
+          test -n "$CRAVE_USERNAME"
+          test -n "$CRAVE_TOKEN"
+          command -v crave
+          echo "Crave CLI detected."
+
+      - name: Prepare Crave clone
+        env:
+          BASE_PROJECT_ID: ${{ inputs.BASE_PROJECT_ID }}
+          CLEAN_BUILD: ${{ inputs.CLEAN_BUILD }}
+        run: |
+          set -e
+          PROJECTFOLDER=/crave-devspaces/J7Prime19
+          if [ "$CLEAN_BUILD" = "yes" ]; then
+            crave clone destroy -y "$PROJECTFOLDER" || true
+          fi
+          if ! crave clone list --json | jq -r '.[]."Cloned At" // .clones[]."Cloned At"' 2>/dev/null | grep -Fxq "$PROJECTFOLDER"; then
+            crave clone create --projectID "$BASE_PROJECT_ID" "$PROJECTFOLDER"
+          fi
+          echo "PROJECTFOLDER=$PROJECTFOLDER" >> "$GITHUB_ENV"
+
+      - name: Build Android 12L for on7xelte
+        env:
+          PROJECTFOLDER: /crave-devspaces/J7Prime19
+          CRAVE_FLAGS: ${{ secrets.CRAVE_FLAGS }}
+          REPO_URL: https://github.com/LineageOS/android.git
+          LOCAL_MANIFEST_URL: https://raw.githubusercontent.com/Exynos7870-Revived-Beta/android_manifest_samsung_universal7870-common/lineage-19.1/7870.xml
+          MTG_MANIFEST_URL: https://raw.githubusercontent.com/Edward33-slim/welyran/${{ github.sha }}/rom/crave/local_manifests/mindthegapps-12.xml
+          PREPARE_URL: https://raw.githubusercontent.com/Edward33-slim/welyran/${{ github.sha }}/scripts/prepare-j7prime.sh
+        run: |
+          set -e
+          cd "$PROJECTFOLDER"
+
+          jq '.projects = []' "$HOME/crave.conf" > "$HOME/crave.conf.tmp"
+          mv "$HOME/crave.conf.tmp" "$HOME/crave.conf"
+
+          echo "Starting remote Crave build in $PROJECTFOLDER"
+
+          crave $CRAVE_FLAGS run --no-patch -- "set -e
+            cd '$PROJECTFOLDER'
+
+            echo '[1/7] Initialize LineageOS 19.1 / Android 12L'
+            repo init -u '$REPO_URL' -b lineage-19.1 --git-lfs --depth=1
+
+            echo '[2/7] Install J7 Prime and GApps manifests'
+            rm -rf .repo/local_manifests
+            mkdir -p .repo/local_manifests
+            curl -fsSL '$LOCAL_MANIFEST_URL' -o .repo/local_manifests/7870.xml
+            curl -fsSL '$MTG_MANIFEST_URL' -o .repo/local_manifests/mindthegapps-12.xml
+
+            echo '[3/7] Sync source'
+            repo sync -c -j$(nproc --all) --force-sync --no-clone-bundle --no-tags --optimized-fetch --prune
+
+            echo '[4/7] Apply J7 Prime lightweight configuration'
+            curl -fsSL '$PREPARE_URL' -o /tmp/prepare-j7prime.sh
+            chmod +x /tmp/prepare-j7prime.sh
+            /tmp/prepare-j7prime.sh
+
+            echo '[5/7] Configure build'
+            source build/envsetup.sh
+            lunch lineage_on7xelte-userdebug
+
+            echo '[6/7] Build'
+            export USE_CCACHE=1
+            ccache -M 12G || true
+            mka bacon
+
+            echo '[7/7] Report output'
+            OUT=out/target/product/on7xelte
+            find "$OUT" -maxdepth 1 -type f ( -name '*.zip' -o -name 'boot.img' -o -name 'recovery.img' -o -name 'dtbo.img' ) -exec ls -lh {} ;
+            sha256sum "$OUT"/*.zip || true
+          "
