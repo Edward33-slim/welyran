@@ -1,4 +1,4 @@
-name: Legacy J7 Prime ROM Builder (disabled)
+name: Legacy J7 Prime ROM Builder
 
 on:
   workflow_dispatch:
@@ -10,9 +10,8 @@ jobs:
   legacy:
     runs-on: ubuntu-22.04
     steps:
-      - name: Explain
+      - name: Redirect
         run: |
-          echo "The standard GitHub-hosted runner is intentionally not used for the full Android ROM build."
-          echo "Use the Crave workflows instead:"
-          echo "1. J7 Prime - Start Crave Runner"
-          echo "2. Build J7 Prime ROM on Crave"
+          echo "The old GitHub-hosted build is intentionally disabled."
+          echo "Use: Build J7 Prime ROM - Strong Self-Hosted Runner"
+          echo "The new workflow accepts any online Linux x64 self-hosted runner with sufficient resources."
