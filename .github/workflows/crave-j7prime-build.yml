@@ -54,7 +54,7 @@ jobs:
           if [ "$CLEAN_BUILD" = "yes" ]; then
             crave clone destroy -y "$PROJECTFOLDER" || true
           fi
-          if ! crave clone list --json | jq -r '.[]."Cloned At" // .clones[]."Cloned At"' 2>/dev/null | grep -Fxq "$PROJECTFOLDER"; then
+          if ! crave clone list --json | jq -r '.clones[]."Cloned At"' 2>/dev/null | grep -Fxq "$PROJECTFOLDER"; then
             crave clone create --projectID "$BASE_PROJECT_ID" "$PROJECTFOLDER"
           fi
           echo "PROJECTFOLDER=$PROJECTFOLDER" >> "$GITHUB_ENV"
