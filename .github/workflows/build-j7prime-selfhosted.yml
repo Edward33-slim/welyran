@@ -1,0 +1,159 @@
+name: Build J7 Prime ROM - Strong Self-Hosted Runner
+
+on:
+  workflow_dispatch:
+    inputs:
+      CLEAN_SOURCE:
+        description: "Delete the previous Android source tree before syncing"
+        required: true
+        default: "no"
+        type: choice
+        options: ["no", "yes"]
+      SYNC_JOBS:
+        description: "repo sync parallel jobs"
+        required: true
+        default: "8"
+        type: choice
+        options: ["4", "6", "8", "12"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: j7prime-selfhosted-build
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: [self-hosted, linux, x64]
+    timeout-minutes: 1440
+    env:
+      SOURCE_DIR: ${{ runner.home }}/android/j7prime
+      REPO_URL: https://github.com/LineageOS/android.git
+      DEVICE_MANIFEST_URL: https://raw.githubusercontent.com/Exynos7870-Revived-Beta/android_manifest_samsung_universal7870-common/lineage-19.1/7870.xml
+      MTG_MANIFEST_URL: https://raw.githubusercontent.com/Edward33-slim/welyran/main/rom/crave/local_manifests/mindthegapps-12.xml
+      PREPARE_URL: https://raw.githubusercontent.com/Edward33-slim/welyran/main/scripts/prepare-j7prime.sh
+
+    steps:
+      - name: Checkout build configuration
+        uses: actions/checkout@v4
+
+      - name: Verify runner capacity
+        shell: bash
+        run: |
+          set -euo pipefail
+          uname -a
+          echo "CPU threads: $(nproc)"
+          free -h
+          df -h "$HOME"
+          RAM_GB=$(awk '/MemTotal/ {printf "%d\n", $2/1024/1024}' /proc/meminfo)
+          FREE_GB=$(df -Pk "$HOME" | awk 'NR==2 {printf "%d\n", $4/1024/1024}')
+          echo "RAM: $RAM_GB GB; free disk: $FREE_GB GB"
+          [ "$RAM_GB" -ge 24 ] || { echo "::error::Need at least 24 GB RAM; 32 GB recommended."; exit 1; }
+          [ "$FREE_GB" -ge 180 ] || { echo "::error::Need at least 180 GB free disk; 200-250 GB recommended."; exit 1; }
+          [ "$(uname -m)" = "x86_64" ] || { echo "::error::This build requires x86_64."; exit 1; }
+
+      - name: Install Android build dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          export DEBIAN_FRONTEND=noninteractive
+          sudo apt-get update
+          sudo apt-get install -y adb bc bison build-essential ccache curl flex g++-multilib gcc-multilib git git-lfs gnupg gperf imagemagick lib32ncurses5-dev lib32readline-dev lib32z1-dev libelf-dev liblz4-tool libncurses5 libncurses5-dev libssl-dev lzop openjdk-11-jdk pngcrush rsync schedtool squashfs-tools unzip xsltproc zip zlib1g-dev
+          git lfs install --skip-repo
+          if ! command -v repo >/dev/null 2>&1; then
+            sudo curl -fsSL https://storage.googleapis.com/git-repo-downloads/repo -o /usr/local/bin/repo
+            sudo chmod 0755 /usr/local/bin/repo
+          fi
+          repo --version
+          java -version
+
+      - name: Prepare source directory
+        env:
+          CLEAN_SOURCE: ${{ inputs.CLEAN_SOURCE }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "$CLEAN_SOURCE" = "yes" ]; then rm -rf "$SOURCE_DIR"; fi
+          mkdir -p "$SOURCE_DIR"
+          cd "$SOURCE_DIR"
+          if [ ! -d .repo ]; then
+            repo init -u "$REPO_URL" -b lineage-19.1 --git-lfs --depth=1
+          fi
+
+      - name: Install device and GApps manifests
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$SOURCE_DIR"
+          rm -rf .repo/local_manifests
+          mkdir -p .repo/local_manifests
+          curl -fsSL "$DEVICE_MANIFEST_URL" -o .repo/local_manifests/7870.xml
+          curl -fsSL "$MTG_MANIFEST_URL" -o .repo/local_manifests/mindthegapps-12.xml
+          ls -lh .repo/local_manifests
+
+      - name: Sync Android source
+        env:
+          SYNC_JOBS: ${{ inputs.SYNC_JOBS }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$SOURCE_DIR"
+          repo sync -c -j"$SYNC_JOBS" --force-sync --no-clone-bundle --no-tags --optimized-fetch --prune
+
+      - name: Apply J7 Prime configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$SOURCE_DIR"
+          curl -fsSL "$PREPARE_URL" -o /tmp/prepare-j7prime.sh
+          chmod +x /tmp/prepare-j7prime.sh
+          /tmp/prepare-j7prime.sh
+
+      - name: Configure build
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$SOURCE_DIR"
+          source build/envsetup.sh
+          lunch lineage_on7xelte-userdebug
+          get_build_var PRODUCT_DEVICE
+          get_build_var PRODUCT_MODEL
+          get_build_var TARGET_ARCH
+          get_build_var TARGET_ARCH_VARIANT
+
+      - name: Build ROM
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$SOURCE_DIR"
+          export USE_CCACHE=1
+          export CCACHE_EXEC="$(command -v ccache)"
+          ccache -M 20G || true
+          source build/envsetup.sh
+          lunch lineage_on7xelte-userdebug
+          CPU_JOBS="$(nproc)"
+          [ "$CPU_JOBS" -le 12 ] || CPU_JOBS=12
+          export NINJA_ARGS="-j${CPU_JOBS}"
+          mka bacon
+
+      - name: Collect ROM output
+        shell: bash
+        run: |
+          set -euo pipefail
+          OUT="$SOURCE_DIR/out/target/product/on7xelte"
+          DEST="$GITHUB_WORKSPACE/out-rom"
+          test -d "$OUT"
+          mkdir -p "$DEST"
+          find "$OUT" -maxdepth 1 -type f \( -name 'lineage-*.zip' -o -name 'boot.img' -o -name 'recovery.img' -o -name 'dtbo.img' -o -name 'vendor_boot.img' \) -exec cp -v {} "$DEST/" \;
+          test -n "$(find "$DEST" -maxdepth 1 -name 'lineage-*.zip' -print -quit)"
+          (cd "$DEST" && sha256sum * > SHA256SUMS.txt)
+          ls -lh "$DEST"
+
+      - name: Upload ROM artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: J7-Prime-on7xelte-Android-12L
+          path: out-rom/
+          if-no-files-found: error
+          retention-days: 14
