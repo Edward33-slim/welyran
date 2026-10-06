@@ -107,6 +107,31 @@ jobs:
 
             echo '[7/7] Report output'
             OUT=out/target/product/on7xelte
-            find "$OUT" -maxdepth 1 -type f ( -name '*.zip' -o -name 'boot.img' -o -name 'recovery.img' -o -name 'dtbo.img' ) -exec ls -lh {} ;
+            find "$OUT" -maxdepth 1 -type f \\( -name '*.zip' -o -name 'boot.img' -o -name 'recovery.img' -o -name 'dtbo.img' \\) -exec ls -lh {} \\;
             sha256sum "$OUT"/*.zip || true
           "
+
+      - name: Pull final ROM from Crave
+        run: |
+          set -e
+          mkdir -p "$GITHUB_WORKSPACE/out-rom"
+          cd "$PROJECTFOLDER"
+          REMOTE_FILES=$(crave ssh -- "find out/target/product/on7xelte -maxdepth 1 -type f \\( -name 'lineage-*.zip' -o -name 'boot.img' -o -name 'recovery.img' -o -name 'dtbo.img' \\) -print" | tr -d '\\r' | grep -v '^Select' || true)
+          test -n "$REMOTE_FILES"
+          while IFS= read -r remote_file; do
+            [ -z "$remote_file" ] && continue
+            echo "Pulling $remote_file"
+            crave pull "$remote_file"
+          done <<< "$REMOTE_FILES"
+          find out/target/product/on7xelte -maxdepth 1 -type f \\( -name 'lineage-*.zip' -o -name 'boot.img' -o -name 'recovery.img' -o -name 'dtbo.img' \\) -exec cp -v {} "$GITHUB_WORKSPACE/out-rom/" \\;
+          test -n "$(find "$GITHUB_WORKSPACE/out-rom" -maxdepth 1 -name 'lineage-*.zip' -print -quit)"
+          sha256sum "$GITHUB_WORKSPACE"/out-rom/* > "$GITHUB_WORKSPACE/out-rom/SHA256SUMS.txt"
+          ls -lh "$GITHUB_WORKSPACE/out-rom"
+
+      - name: Upload ROM artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: J7-Prime-on7xelte-Android-12L
+          path: out-rom/
+          if-no-files-found: error
+          retention-days: 14
