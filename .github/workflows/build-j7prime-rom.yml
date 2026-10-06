@@ -1,139 +1,18 @@
-name: Build J7 Prime ROM (on7xelte)
-
-concurrency:
-  group: j7-prime-rom-build
-  cancel-in-progress: true
+name: Legacy J7 Prime ROM Builder (disabled)
 
 on:
-  push:
-    branches: [main, rom-builder-on7xelte]
   workflow_dispatch:
 
 permissions:
   contents: read
-  actions: write
 
 jobs:
-  build:
-    runs-on: ${{ vars.ROM_RUNNER || 'ubuntu-22.04' }}
-    timeout-minutes: 360
-
+  legacy:
+    runs-on: ubuntu-22.04
     steps:
-      - name: Free runner disk space
+      - name: Explain
         run: |
-          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup
-          sudo docker system prune -af || true
-          df -h
-
-      - name: Check build storage
-        run: |
-          echo "Filesystem:"
-          df -h "$GITHUB_WORKSPACE"
-          AVAILABLE_KB=$(df --output=avail "$GITHUB_WORKSPACE" | tail -1 | tr -d ' ')
-          REQUIRED_KB=$((100 * 1024 * 1024))
-          if [ "$AVAILABLE_KB" -lt "$REQUIRED_KB" ]; then
-            echo "::error::A full LineageOS 19.1 source build cannot run on this standard runner: at least 100 GiB free space is required; this runner exposes only about 14 GiB."
-            exit 1
-          fi
-
-      - name: Install build dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y             adb bc bison build-essential ccache curl flex g++-multilib gcc-multilib             git gnupg gperf imagemagick lib32ncurses5-dev lib32readline-dev             lib32z1-dev liblz4-tool libncurses5 libncurses5-dev libsdl1.2-dev             libssl-dev libxml2-utils lzop pngcrush rsync schedtool squashfs-tools             xsltproc zip zlib1g-dev unzip python3 python-is-python3
-
-      - name: Install repo
-        run: |
-          mkdir -p "$HOME/bin"
-          curl -L https://storage.googleapis.com/git-repo-downloads/repo -o "$HOME/bin/repo"
-          chmod a+rx "$HOME/bin/repo"
-          echo "$HOME/bin" >> "$GITHUB_PATH"
-
-      - name: Initialize LineageOS 19.1 (Android 12L)
-        run: |
-          mkdir -p "$GITHUB_WORKSPACE/rom"
-          cd "$GITHUB_WORKSPACE/rom"
-          repo init -u https://github.com/LineageOS/android.git -b lineage-19.1 --git-lfs --depth=1
-          mkdir -p .repo/local_manifests
-          curl -fsSL https://raw.githubusercontent.com/Exynos7870-Revived-Beta/android_manifest_samsung_universal7870-common/lineage-19.1/7870.xml             -o .repo/local_manifests/7870.xml
-
-      - name: Sync source
-        run: |
-          cd "$GITHUB_WORKSPACE/rom"
-          repo sync -c -j2 --force-sync --no-clone-bundle --no-tags --optimized-fetch --depth=1 --partial-clone --clone-filter=blob:limit=10M
-        env:
-          GIT_TERMINAL_PROMPT: "0"
-
-      - name: Configure lightweight J7 Prime build
-        run: |
-          cd "$GITHUB_WORKSPACE/rom"
-
-          # The Exynos7870 Revived device tree already defines the Samsung
-          # identity and ARM64 target. Do not append duplicate make variables.
-          test -f device/samsung/on7xelte/lineage_on7xelte.mk
-          grep -q 'PRODUCT_DEVICE := on7xelte' device/samsung/on7xelte/lineage_on7xelte.mk
-          grep -q 'PRODUCT_MODEL := Galaxy J7 Prime' device/samsung/on7xelte/lineage_on7xelte.mk
-
-          # Integrate MindTheGapps 12.1 into the product without corrupting
-          # the device makefile.
-          if ! grep -q 'vendor/gapps/arm64/arm64-vendor.mk' device/samsung/on7xelte/lineage_on7xelte.mk; then
-            printf '\n# Integrated MindTheGapps 12.1\n$(call inherit-product, vendor/gapps/arm64/arm64-vendor.mk)\n' >> device/samsung/on7xelte/lineage_on7xelte.mk
-          fi
-
-          # ULTRA-SLIM profile: keep Android framework, phone/radio stack,
-          # Settings/SystemUI/Launcher, Play Store, GMS and WebView.
-          # Remove optional Google/Lineage applications to reduce the final ZIP.
-          cat >> device/samsung/on7xelte/lineage_on7xelte.mk <<'EOF'
-
-          # Slim ROM package exclusions
-          PRODUCT_PACKAGES -= FamilyLinkParentalControls
-          PRODUCT_PACKAGES -= MarkupGoogle_v2
-          PRODUCT_PACKAGES -= SpeechServicesByGoogle
-          PRODUCT_PACKAGES -= Velvet
-          PRODUCT_PACKAGES -= talkback
-          PRODUCT_PACKAGES -= GoogleFeedback
-          PRODUCT_PACKAGES -= GooglePartnerSetup
-          PRODUCT_PACKAGES -= PrebuiltExchange3Google
-          PRODUCT_PACKAGES -= GoogleRestore
-          PRODUCT_PACKAGES -= Wellbeing
-          PRODUCT_PACKAGES -= wellbeing.xml
-          PRODUCT_PACKAGES -= GoogleCalendarSyncAdapter
-          PRODUCT_PACKAGES -= GoogleContactsSyncAdapter
-          PRODUCT_PACKAGES -= AndroidAutoStub
-          PRODUCT_PACKAGES -= GoogleOneTimeInitializer
-          PRODUCT_PACKAGES -= Etar
-          PRODUCT_PACKAGES -= Jelly
-          PRODUCT_PACKAGES -= Recorder
-          PRODUCT_PACKAGES -= Eleven
-          PRODUCT_PACKAGES -= AudioFX
-          PRODUCT_PACKAGES -= Aperture
-          PRODUCT_PACKAGES -= Glimpse
-          PRODUCT_PACKAGES -= MusicFX
-          PRODUCT_PACKAGES -= ThemePicker
-          EOF
-
-          echo "Slim ROM package configuration:"
-          grep -E 'PRODUCT_PACKAGES -=|PRODUCT_(DEVICE|NAME|BRAND|MODEL|MANUFACTURER)|TARGET_GAPPS_ARCH' device/samsung/on7xelte/lineage_on7xelte.mk || true
-
-      - name: Build ROM
-        run: |
-          cd "$GITHUB_WORKSPACE/rom"
-          source build/envsetup.sh
-          lunch lineage_on7xelte-userdebug
-          export USE_CCACHE=1
-          ccache -M 8G
-          m bacon -j2
-
-      - name: Collect ROM
-        run: |
-          mkdir -p "$GITHUB_WORKSPACE/out-rom"
-          find "$GITHUB_WORKSPACE/rom/out/target/product/on7xelte" -maxdepth 1 -type f \(             -name "*.zip" -o -name "boot.img" -o -name "recovery.img" -o -name "dtbo.img"           \) -exec cp -v {} "$GITHUB_WORKSPACE/out-rom/" \;
-          sha256sum "$GITHUB_WORKSPACE"/out-rom/* > "$GITHUB_WORKSPACE/out-rom/SHA256SUMS.txt"
-          ls -lh "$GITHUB_WORKSPACE/out-rom"
-
-      - name: Upload ROM artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: J7-Prime-on7xelte-Android-12L
-          path: out-rom/
-          if-no-files-found: error
-          retention-days: 14
+          echo "The standard GitHub-hosted runner is intentionally not used for the full Android ROM build."
+          echo "Use the Crave workflows instead:"
+          echo "1. J7 Prime - Start Crave Runner"
+          echo "2. Build J7 Prime ROM on Crave"
