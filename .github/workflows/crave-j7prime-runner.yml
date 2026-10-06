@@ -51,7 +51,7 @@ jobs:
             rm -rf actions-runner
             mkdir -p actions-runner
             cd actions-runner
-            RUNNER_VERSION=2.329.0
+            RUNNER_VERSION=2.337.0
             curl -fsSL -o runner.tar.gz https://github.com/actions/runner/releases/download/v$RUNNER_VERSION/actions-runner-linux-x64-$RUNNER_VERSION.tar.gz
             tar -xzf runner.tar.gz
             rm runner.tar.gz
