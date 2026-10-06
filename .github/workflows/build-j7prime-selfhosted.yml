@@ -28,7 +28,7 @@ jobs:
     runs-on: [self-hosted, linux, x64]
     timeout-minutes: 1440
     env:
-      SOURCE_DIR: ${{ runner.home }}/android/j7prime
+      SOURCE_DIR: ${{ github.workspace }}/../j7prime-source
       REPO_URL: https://github.com/LineageOS/android.git
       DEVICE_MANIFEST_URL: https://raw.githubusercontent.com/Exynos7870-Revived-Beta/android_manifest_samsung_universal7870-common/lineage-19.1/7870.xml
       MTG_MANIFEST_URL: https://raw.githubusercontent.com/Edward33-slim/welyran/main/rom/crave/local_manifests/mindthegapps-12.xml
