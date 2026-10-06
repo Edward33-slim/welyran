@@ -1,0 +1,10 @@
+{
+  "username": "${CRAVE_USERNAME}",
+  "headers": {
+    "Content-Type": "application/json",
+    "Authorization": "${CRAVE_TOKEN}",
+    "User-Agent": "Crave"
+  },
+  "projects": [],
+  "server": "https://foss.crave.io/api"
+}
