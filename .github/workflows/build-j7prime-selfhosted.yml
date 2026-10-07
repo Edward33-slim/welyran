@@ -12,9 +12,9 @@ on:
       SYNC_JOBS:
         description: "repo sync parallel jobs"
         required: true
-        default: "8"
+        default: "6"
         type: choice
-        options: ["4", "6", "8", "12"]
+        options: ["2", "4", "6", "8"]
 
 permissions:
   contents: read
@@ -49,8 +49,8 @@ jobs:
           RAM_GB=$(awk '/MemTotal/ {printf "%d\n", $2/1024/1024}' /proc/meminfo)
           FREE_GB=$(df -Pk "$HOME" | awk 'NR==2 {printf "%d\n", $4/1024/1024}')
           echo "RAM: $RAM_GB GB; free disk: $FREE_GB GB"
-          [ "$RAM_GB" -ge 24 ] || { echo "::error::Need at least 24 GB RAM; 32 GB recommended."; exit 1; }
-          [ "$FREE_GB" -ge 180 ] || { echo "::error::Need at least 180 GB free disk; 200-250 GB recommended."; exit 1; }
+          [ "$RAM_GB" -ge 32 ] || { echo "::error::Need at least 32 GB RAM for a reliable full build."; exit 1; }
+          [ "$FREE_GB" -ge 250 ] || { echo "::error::Need at least 250 GB free disk for source + build outputs."; exit 1; }
           [ "$(uname -m)" = "x86_64" ] || { echo "::error::This build requires x86_64."; exit 1; }
 
       - name: Install Android build dependencies
@@ -59,7 +59,10 @@ jobs:
           set -euo pipefail
           export DEBIAN_FRONTEND=noninteractive
           sudo apt-get update
-          sudo apt-get install -y adb bc bison build-essential ccache curl flex g++-multilib gcc-multilib git git-lfs gnupg gperf imagemagick lib32ncurses5-dev lib32readline-dev lib32z1-dev libelf-dev liblz4-tool libncurses5 libncurses5-dev libssl-dev lzop openjdk-11-jdk pngcrush rsync schedtool squashfs-tools unzip xsltproc zip zlib1g-dev
+          sudo apt-get install -y adb bc bison build-essential ccache curl flex g++-multilib gcc-multilib git git-lfs gnupg gperf imagemagick lib32readline-dev lib32z1-dev libelf-dev liblz4-tool libssl-dev lzop openjdk-11-jdk pngcrush rsync schedtool squashfs-tools unzip xsltproc zip zlib1g-dev
+          if apt-cache show lib32ncurses5-dev >/dev/null 2>&1; then sudo apt-get install -y lib32ncurses5-dev; elif apt-cache show lib32ncurses-dev >/dev/null 2>&1; then sudo apt-get install -y lib32ncurses-dev; fi
+          if apt-cache show libncurses5 >/dev/null 2>&1; then sudo apt-get install -y libncurses5; fi
+          if apt-cache show libncurses5-dev >/dev/null 2>&1; then sudo apt-get install -y libncurses5-dev; fi
           git lfs install --skip-repo
           if ! command -v repo >/dev/null 2>&1; then
             sudo curl -fsSL https://storage.googleapis.com/git-repo-downloads/repo -o /usr/local/bin/repo
@@ -99,7 +102,13 @@ jobs:
         run: |
           set -euo pipefail
           cd "$SOURCE_DIR"
-          repo sync -c -j"$SYNC_JOBS" --force-sync --no-clone-bundle --no-tags --optimized-fetch --prune
+          for attempt in 1 2 3 4 5; do
+            echo "repo sync attempt $attempt/5"
+            if repo sync -c -j"$SYNC_JOBS" --force-sync --no-clone-bundle --no-tags --optimized-fetch --prune; then break; fi
+            if [ "$attempt" -eq 5 ]; then echo "::error::repo sync failed after 5 attempts"; exit 1; fi
+            sleep "$((attempt * 30))"
+          done
+          repo status
 
       - name: Apply J7 Prime configuration
         shell: bash
@@ -133,9 +142,26 @@ jobs:
           source build/envsetup.sh
           lunch lineage_on7xelte-userdebug
           CPU_JOBS="$(nproc)"
-          [ "$CPU_JOBS" -le 12 ] || CPU_JOBS=12
-          export NINJA_ARGS="-j${CPU_JOBS}"
-          mka bacon
+          if [ "$CPU_JOBS" -gt 8 ]; then CPU_JOBS=8; fi
+          if [ "$CPU_JOBS" -lt 2 ]; then CPU_JOBS=2; fi
+          export NINJA_ARGS="-j"${CPU_JOBS}"
+          echo "Ninja jobs: " + "$CPU_JOBS"
+          if ! mka bacon; then
+            echo "::warning::Initial build attempt failed; retrying once with the existing build tree."
+            sync
+            mka bacon
+          fi
+
+      - name: Verify final build
+        shell: bash
+        run: |
+          set -euo pipefail
+          OUT="$SOURCE_DIR/out/target/product/on7xelte"
+          ls -lah "$OUT"
+          ZIP="$(find "$OUT" -maxdepth 1 -type f -name 'lineage-*.zip' -print -quit)"
+          test -n "$ZIP" || { echo "::error::No LineageOS ROM ZIP was produced."; exit 1; }
+          test -s "$ZIP" || { echo "::error::ROM ZIP is empty."; exit 1; }
+          sha256sum "$ZIP"
 
       - name: Collect ROM output
         shell: bash
@@ -157,3 +183,4 @@ jobs:
           path: out-rom/
           if-no-files-found: error
           retention-days: 14
+          compression-level: 0
