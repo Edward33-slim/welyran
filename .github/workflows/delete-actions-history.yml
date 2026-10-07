@@ -10,25 +10,41 @@ jobs:
   delete-history:
     runs-on: ubuntu-latest
     steps:
-      - name: Delete all workflow runs
+      - name: Delete all workflow runs except this cleanup run
         env:
           GH_TOKEN: ${{ github.token }}
+          CURRENT_RUN_ID: ${{ github.run_id }}
         shell: bash
         run: |
           set -euo pipefail
 
-          mapfile -t RUN_IDS < <(
-            gh api --paginate \
-              "/repos/${GITHUB_REPOSITORY}/actions/runs?per_page=100" \
-              --jq '.workflow_runs[].id'
-          )
+          echo "Cleanup run: ${CURRENT_RUN_ID}"
 
-          echo "Found ${#RUN_IDS[@]} workflow runs."
+          gh api --paginate \
+            "/repos/${GITHUB_REPOSITORY}/actions/runs?per_page=100" \
+            --jq '.workflow_runs[].id' > /tmp/run_ids
 
-          for run_id in "${RUN_IDS[@]}"; do
+          deleted=0
+          skipped=0
+
+          while IFS= read -r run_id; do
+            [ -z "$run_id" ] && continue
+
+            if [ "$run_id" = "${CURRENT_RUN_ID}" ]; then
+              echo "Keeping current cleanup run: $run_id"
+              skipped=$((skipped + 1))
+              continue
+            fi
+
             echo "Deleting workflow run: $run_id"
-            gh api --method DELETE \
-              "/repos/${GITHUB_REPOSITORY}/actions/runs/${run_id}"
-          done
+            if gh api --method DELETE \
+              "/repos/${GITHUB_REPOSITORY}/actions/runs/${run_id}" >/dev/null 2>&1; then
+              deleted=$((deleted + 1))
+            else
+              echo "Could not delete run $run_id; continuing."
+            fi
+          done < /tmp/run_ids
 
-          echo "All Actions workflow runs have been deleted."
+          echo "Deleted: $deleted"
+          echo "Kept: $skipped (the currently running cleanup job)"
+          echo "All other GitHub Actions run history has been deleted."
