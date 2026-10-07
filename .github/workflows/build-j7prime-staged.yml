@@ -1,0 +1,180 @@
+name: J7 Prime ROM - Staged Build
+
+on:
+  workflow_dispatch:
+    inputs:
+      stage:
+        description: "Stage to run"
+        required: true
+        default: "all"
+        type: choice
+        options: [all, 1, 2, 3, 4, 5, build]
+  sync_jobs:
+    description: "Parallel sync jobs"
+    required: true
+    default: "2"
+    type: choice
+    options: ["1", "2", "3", "4"]
+
+permissions:
+  contents: read
+  actions: write
+
+concurrency:
+  group: j7prime-staged-build
+  cancel-in-progress: false
+
+env:
+  SOURCE_DIR: ${{ github.workspace }}/android
+  CACHE_KEY: j7prime-lineage19-1-source-v1
+  DEVICE_MANIFEST: https://raw.githubusercontent.com/Exynos7870-Revived-Beta/android_manifest_samsung_universal7870-common/lineage-19.1/7870.xml
+  MTG_MANIFEST: https://raw.githubusercontent.com/Edward33-slim/welyran/main/rom/crave/local_manifests/mindthegapps-12.xml
+  PREPARE_URL: https://raw.githubusercontent.com/Edward33-slim/welyran/main/scripts/prepare-j7prime.sh
+
+jobs:
+  stage1:
+    if: ${{ inputs.stage == 'all' || inputs.stage == '1' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install minimum tools
+        run: sudo apt-get update && sudo apt-get install -y git git-lfs curl
+      - name: Initialize LineageOS
+        run: |
+          set -e
+          mkdir -p "$SOURCE_DIR"
+          cd "$SOURCE_DIR"
+          repo init -u https://github.com/LineageOS/android.git -b lineage-19.1 --git-lfs --depth=1
+          mkdir -p .repo/local_manifests
+          curl -fsSL "$DEVICE_MANIFEST" -o .repo/local_manifests/7870.xml
+          curl -fsSL "$MTG_MANIFEST" -o .repo/local_manifests/mindthegapps-12.xml
+      - name: Sync stage 1
+        run: |
+          cd "$SOURCE_DIR"
+          repo sync -c -j1 --retry-fetches=5 --force-sync --no-clone-bundle --no-tags --optimized-fetch --prune
+      - name: Save stage 1 state
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ github.workspace }}/android/.repo
+          key: j7prime-stage1-${{ github.run_id }}
+
+  stage2:
+    if: ${{ inputs.stage == 'all' || inputs.stage == '2' }}
+    needs: stage1
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache/restore@v4
+        with:
+          path: ${{ github.workspace }}/android/.repo
+          key: j7prime-stage1-${{ github.run_id }}
+      - name: Continue sync stage 2
+        run: |
+          sudo apt-get update && sudo apt-get install -y git git-lfs curl
+          cd "$SOURCE_DIR"
+          repo sync -c -j1 --retry-fetches=5 --force-sync --no-clone-bundle --no-tags --optimized-fetch --prune
+      - uses: actions/cache/save@v4
+        with:
+          path: ${{ github.workspace }}/android/.repo
+          key: j7prime-stage2-${{ github.run_id }}
+
+  stage3:
+    if: ${{ inputs.stage == 'all' || inputs.stage == '3' }}
+    needs: stage2
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache/restore@v4
+        with:
+          path: ${{ github.workspace }}/android/.repo
+          key: j7prime-stage2-${{ github.run_id }}
+      - name: Continue sync stage 3
+        run: |
+          sudo apt-get update && sudo apt-get install -y git git-lfs curl
+          cd "$SOURCE_DIR"
+          repo sync -c -j1 --retry-fetches=5 --force-sync --no-clone-bundle --no-tags --optimized-fetch --prune
+      - uses: actions/cache/save@v4
+        with:
+          path: ${{ github.workspace }}/android/.repo
+          key: j7prime-stage3-${{ github.run_id }}
+
+  stage4:
+    if: ${{ inputs.stage == 'all' || inputs.stage == '4' }}
+    needs: stage3
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache/restore@v4
+        with:
+          path: ${{ github.workspace }}/android/.repo
+          key: j7prime-stage3-${{ github.run_id }}
+      - name: Continue sync stage 4
+        run: |
+          sudo apt-get update && sudo apt-get install -y git git-lfs curl
+          cd "$SOURCE_DIR"
+          repo sync -c -j1 --retry-fetches=5 --force-sync --no-clone-bundle --no-tags --optimized-fetch --prune
+      - uses: actions/cache/save@v4
+        with:
+          path: ${{ github.workspace }}/android/.repo
+          key: j7prime-stage4-${{ github.run_id }}
+
+  stage5:
+    if: ${{ inputs.stage == 'all' || inputs.stage == '5' }}
+    needs: stage4
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache/restore@v4
+        with:
+          path: ${{ github.workspace }}/android/.repo
+          key: j7prime-stage4-${{ github.run_id }}
+      - name: Finish source sync
+        run: |
+          sudo apt-get update && sudo apt-get install -y git git-lfs curl
+          cd "$SOURCE_DIR"
+          repo sync -c -j1 --retry-fetches=5 --force-sync --no-clone-bundle --no-tags --optimized-fetch --prune
+          repo status
+      - uses: actions/cache/save@v4
+        with:
+          path: ${{ github.workspace }}/android
+          key: j7prime-source-complete-${{ github.run_id }}
+
+  build:
+    if: ${{ inputs.stage == 'all' || inputs.stage == 'build' }}
+    needs: stage5
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache/restore@v4
+        with:
+          path: ${{ github.workspace }}/android
+          key: j7prime-source-complete-${{ github.run_id }}
+      - name: Build
+        run: |
+          set -e
+          sudo apt-get update
+          sudo apt-get install -y adb bc bison build-essential ccache curl flex g++-multilib gcc-multilib git git-lfs gnupg gperf imagemagick lib32readline-dev lib32z1-dev libelf-dev liblz4-tool libssl-dev lzop openjdk-11-jdk pngcrush rsync schedtool squashfs-tools unzip xsltproc zip zlib1g-dev
+          cd "$SOURCE_DIR"
+          curl -fsSL "$PREPARE_URL" -o /tmp/prepare.sh
+          chmod +x /tmp/prepare.sh
+          /tmp/prepare.sh
+          source build/envsetup.sh
+          lunch lineage_on7xelte-userdebug
+          export NINJA_ARGS="-j2"
+          export USE_CCACHE=1
+          ccache -M 2G || true
+          mka bacon
+      - name: Collect ROM
+        uses: actions/upload-artifact@v4
+        with:
+          name: J7-Prime-on7xelte-Android-12L
+          path: android/out/target/product/on7xelte/lineage-*.zip
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
