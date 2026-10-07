@@ -1,0 +1,141 @@
+name: J7 Prime ROM - Incremental Build
+
+on:
+  workflow_dispatch:
+    inputs:
+      step:
+        description: "Build only one small step"
+        required: true
+        default: "1"
+        type: choice
+        options:
+          - "1"
+          - "2"
+          - "3"
+          - "4"
+          - "5"
+          - "6"
+          - "7"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: j7prime-incremental
+  cancel-in-progress: false
+
+env:
+  WORK: ${{ github.workspace }}/j7prime-work
+
+jobs:
+  incremental:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install small toolset
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y git git-lfs curl unzip rsync zip
+
+      - name: Restore incremental state
+        uses: actions/cache/restore@v4
+        with:
+          path: j7prime-work
+          key: j7prime-incremental-${{ inputs.step }}-
+          restore-keys: |
+            j7prime-incremental-
+
+      - name: Execute one small build step
+        shell: bash
+        env:
+          STEP: ${{ inputs.step }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$WORK"
+          STATE="$WORK/state"
+          mkdir -p "$STATE"
+
+          case "$STEP" in
+            1)
+              echo "STEP 1: initialize project"
+              mkdir -p "$WORK/source" "$WORK/manifests"
+              curl -fsSL https://raw.githubusercontent.com/Exynos7870-Revived-Beta/android_manifest_samsung_universal7870-common/lineage-19.1/7870.xml                 -o "$WORK/manifests/7870.xml"
+              echo 1 > "$STATE/completed"
+              ;;
+            2)
+              echo "STEP 2: fetch Android/device repositories"
+              cd "$WORK/source"
+              if [ ! -d .repo ]; then
+                repo init -u https://github.com/LineageOS/android.git -b lineage-19.1 --depth=1
+              fi
+              mkdir -p .repo/local_manifests
+              cp "$WORK/manifests/7870.xml" .repo/local_manifests/7870.xml
+              repo sync -c -j1 --retry-fetches=5 --no-clone-bundle --no-tags --optimized-fetch --prune
+              echo 2 > "$STATE/completed"
+              ;;
+            3)
+              echo "STEP 3: continue source preparation"
+              cd "$WORK/source"
+              repo sync -c -j1 --retry-fetches=5 --no-clone-bundle --no-tags --optimized-fetch --prune
+              echo 3 > "$STATE/completed"
+              ;;
+            4)
+              echo "STEP 4: prepare J7 Prime device tree"
+              cd "$WORK/source"
+              repo sync -c -j1 --retry-fetches=5 --no-clone-bundle --no-tags --optimized-fetch --prune
+              curl -fsSL https://raw.githubusercontent.com/Edward33-slim/welyran/main/scripts/prepare-j7prime.sh -o "$WORK/prepare-j7prime.sh"
+              chmod +x "$WORK/prepare-j7prime.sh"
+              echo 4 > "$STATE/completed"
+              ;;
+            5)
+              echo "STEP 5: prepare integrated GApps"
+              cd "$WORK/source"
+              mkdir -p .repo/local_manifests
+              curl -fsSL https://raw.githubusercontent.com/Edward33-slim/welyran/main/rom/crave/local_manifests/mindthegapps-12.xml                 -o .repo/local_manifests/mindthegapps-12.xml
+              repo sync -c -j1 --retry-fetches=5 --no-clone-bundle --no-tags --optimized-fetch --prune
+              "$WORK/prepare-j7prime.sh"
+              echo 5 > "$STATE/completed"
+              ;;
+            6)
+              echo "STEP 6: compile incrementally"
+              cd "$WORK/source"
+              source build/envsetup.sh
+              lunch lineage_on7xelte-userdebug
+              export USE_CCACHE=1
+              export NINJA_ARGS="-j2"
+              ccache -M 2G || true
+              mka bacon
+              echo 6 > "$STATE/completed"
+              ;;
+            7)
+              echo "STEP 7: collect final ROM"
+              OUT="$WORK/source/out/target/product/on7xelte"
+              test -d "$OUT"
+              mkdir -p "$WORK/final"
+              find "$OUT" -maxdepth 1 -type f \( -name 'lineage-*.zip' -o -name 'boot.img' -o -name 'recovery.img' -o -name 'dtbo.img' \) -exec cp -v {} "$WORK/final/" \;
+              test -n "$(find "$WORK/final" -name 'lineage-*.zip' -print -quit)"
+              (cd "$WORK/final" && sha256sum * > SHA256SUMS.txt)
+              ;;
+          esac
+
+          echo "Completed step: $STEP"
+          du -sh "$WORK" || true
+          df -h "$WORK" || true
+
+      - name: Save incremental state
+        uses: actions/cache/save@v4
+        with:
+          path: j7prime-work
+          key: j7prime-incremental-${{ inputs.step }}-${{ github.run_id }}
+
+      - name: Upload final ROM when available
+        if: ${{ inputs.step == '7' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: J7-Prime-on7xelte-Android-12L
+          path: j7prime-work/final/
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
