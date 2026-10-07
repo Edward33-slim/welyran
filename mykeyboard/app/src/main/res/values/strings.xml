@@ -1,6 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<!-- Build trigger -->
-<resources>
-    <string name="app_name">MyKeyboard</string>
-    <string name="keyboard_name">MyKeyboard</string>
-</resources>
