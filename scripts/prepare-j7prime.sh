@@ -19,6 +19,26 @@ $(call inherit-product, vendor/gapps/arm64/arm64-vendor.mk)
 EOF
 fi
 
+if ! grep -q '^# J7 Prime Slim Profile
+
+OVERLAY="device/samsung/on7xelte/overlay/frameworks/base/core/res/res/values"
+mkdir -p "$OVERLAY"
+cat > "$OVERLAY/config.xml" <<'EOF'
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 2 = UiModeManager.MODE_NIGHT_YES -->
+    <integer name="config_defaultNightMode">2</integer>
+</resources>
+EOF
+
+echo "Configured:"
+echo "  Device: on7xelte"
+echo "  Model: Galaxy J7 Prime"
+echo "  ABI: arm64-v8a"
+echo "  Android: 12L / LineageOS 19.1"
+echo "  GApps: integrated MindTheGapps sigma"
+echo "  Magisk: excluded from ROM"
+ "$PRODUCT_MK"; then
 cat >> "$PRODUCT_MK" <<'EOF'
 
 # J7 Prime Slim Profile
@@ -40,6 +60,7 @@ PRODUCT_PACKAGES -= Aperture
 PRODUCT_PACKAGES -= Glimpse
 PRODUCT_PACKAGES -= MusicFX
 EOF
+fi
 
 OVERLAY="device/samsung/on7xelte/overlay/frameworks/base/core/res/res/values"
 mkdir -p "$OVERLAY"
