@@ -1,6 +1,13 @@
 name: Build J7 Prime ROM - Strong Self-Hosted Runner
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/build-j7prime-selfhosted.yml"
+      - "scripts/prepare-j7prime.sh"
+      - "rom/**"
+      - "device/**"
   workflow_dispatch:
     inputs:
       CLEAN_SOURCE:
@@ -104,7 +111,9 @@ jobs:
           cd "$SOURCE_DIR"
           for attempt in 1 2 3 4 5; do
             echo "repo sync attempt $attempt/5"
-            if repo sync -c -j"$SYNC_JOBS" --force-sync --no-clone-bundle --no-tags --optimized-fetch --prune; then break; fi
+            if git config --global http.version HTTP/1.1
+            git config --global core.compression 0
+            repo sync -c -j"$SYNC_JOBS" --retry-fetches=5 --force-sync --no-clone-bundle --no-tags --optimized-fetch --prune; then break; fi
             if [ "$attempt" -eq 5 ]; then echo "::error::repo sync failed after 5 attempts"; exit 1; fi
             sleep "$((attempt * 30))"
           done
@@ -138,9 +147,13 @@ jobs:
           cd "$SOURCE_DIR"
           export USE_CCACHE=1
           export CCACHE_EXEC="$(command -v ccache)"
-          ccache -M 20G || true
+          export CCACHE_DIR="$HOME/.ccache-j7prime"
+          mkdir -p "$CCACHE_DIR"
+          ccache -M 12G || true
           source build/envsetup.sh
           lunch lineage_on7xelte-userdebug
+          echo "Disk before build:"
+          df -h "$SOURCE_DIR" "$HOME"
           CPU_JOBS="$(nproc)"
           if [ "$CPU_JOBS" -gt 8 ]; then CPU_JOBS=8; fi
           if [ "$CPU_JOBS" -lt 2 ]; then CPU_JOBS=2; fi
