@@ -144,8 +144,8 @@ jobs:
           CPU_JOBS="$(nproc)"
           if [ "$CPU_JOBS" -gt 8 ]; then CPU_JOBS=8; fi
           if [ "$CPU_JOBS" -lt 2 ]; then CPU_JOBS=2; fi
-          export NINJA_ARGS="-j"${CPU_JOBS}"
-          echo "Ninja jobs: " + "$CPU_JOBS"
+          export NINJA_ARGS="-j${CPU_JOBS}"
+          echo "Ninja jobs: $CPU_JOBS"
           if ! mka bacon; then
             echo "::warning::Initial build attempt failed; retrying once with the existing build tree."
             sync
