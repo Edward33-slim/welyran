@@ -1,0 +1,90 @@
+name: Validate J7 Prime ROM build configuration
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "scripts/prepare-j7prime.sh"
+      - "rom/**"
+      - ".github/workflows/build-j7prime-incremental.yml"
+      - ".github/workflows/build-j7prime-selfhosted.yml"
+      - ".github/workflows/validate-j7prime.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Validate shell script syntax
+        run: |
+          set -euo pipefail
+          bash -n scripts/prepare-j7prime.sh
+          echo "PASS: prepare-j7prime.sh syntax"
+
+      - name: Validate device manifest XML and required projects
+        run: |
+          set -euo pipefail
+          curl -fsSL \
+            https://raw.githubusercontent.com/Exynos7870-Revived-Beta/android_manifest_samsung_universal7870-common/lineage-19.1/7870.xml \
+            -o /tmp/7870.xml
+          python3 - <<'PY'
+          import xml.etree.ElementTree as ET
+          root = ET.parse("/tmp/7870.xml").getroot()
+          projects = {p.attrib.get("path"): p.attrib.get("name") for p in root.findall("project")}
+          required = {
+              "device/samsung/on7xelte",
+              "device/samsung/universal7870-common",
+              "kernel/samsung/exynos7870",
+              "vendor/samsung/on7xelte",
+              "vendor/samsung/universal7870-common",
+          }
+          missing = sorted(required - set(projects))
+          if missing:
+              raise SystemExit("Missing required manifest paths: " + ", ".join(missing))
+          print(f"PASS: XML valid; {len(projects)} projects found")
+          for path in sorted(required):
+              print(f"  {path} <- {projects[path]}")
+          PY
+
+      - name: Validate MindTheGapps manifest
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import xml.etree.ElementTree as ET
+          root = ET.parse("rom/crave/local_manifests/mindthegapps-12.xml").getroot()
+          project = next((p for p in root.findall("project") if p.attrib.get("path") == "vendor/gapps"), None)
+          if project is None:
+              raise SystemExit("No vendor/gapps project in MindTheGapps manifest")
+          print("PASS: MindTheGapps project configured:", project.attrib)
+          PY
+          curl -fsSI https://gitlab.com/MindTheGapps/vendor_gapps/-/raw/sigma/arm64/arm64-vendor.mk >/dev/null
+          echo "PASS: MindTheGapps arm64 makefile URL responds"
+
+      - name: Check target product configuration assumptions
+        run: |
+          set -euo pipefail
+          grep -q 'PRODUCT_DEVICE := on7xelte' scripts/prepare-j7prime.sh
+          grep -q 'PRODUCT_MODEL := Galaxy J7 Prime' scripts/prepare-j7prime.sh
+          grep -q 'lineage_on7xelte-userdebug' .github/workflows/build-j7prime-selfhosted.yml
+          echo "PASS: target identifiers present in build configuration"
+
+      - name: Report runner capacity without attempting a full ROM build
+        run: |
+          set -euo pipefail
+          echo "Runner: $(uname -m)"
+          echo "CPU threads: $(nproc)"
+          free -h
+          df -h /
+          FREE_GB=$(df -Pk / | awk 'NR==2 {printf "%d", $4/1024/1024}')
+          if [ "$FREE_GB" -lt 200 ]; then
+            echo "::warning::This GitHub-hosted runner has only about ${FREE_GB} GB free. It cannot hold a complete LineageOS source tree and build output. This workflow validates configuration only; it does not build a ROM."
+          else
+            echo "Disk appears large enough for a source/build attempt."
+          fi
